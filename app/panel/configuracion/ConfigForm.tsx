@@ -5,6 +5,7 @@ import { updateBusinessSettings } from "./actions";
 import { Card } from "../../components/ui/Card";
 import { Input, Textarea } from "../../components/ui/Input";
 import { Button } from "../../components/ui/Button";
+import { FEATURE_DEFAULTS } from "../../components/FeatureCards";
 
 type Settings = {
   business_name: string;
@@ -20,6 +21,12 @@ type Settings = {
   show_prices: boolean;
   hero_title?: string | null;
   hero_subtitle?: string | null;
+  feature1_title?: string | null;
+  feature1_text?: string | null;
+  feature2_title?: string | null;
+  feature2_text?: string | null;
+  feature3_title?: string | null;
+  feature3_text?: string | null;
   quote_header_text?: string | null;
   quote_footer_text?: string | null;
   quote_validity_days?: number;
@@ -126,6 +133,35 @@ export function ConfigForm({ settings }: { settings: Settings }) {
         <h2 className="text-sm font-semibold text-zinc-900">Textos del hero (home)</h2>
         <Input label="Título" name="hero_title" defaultValue={settings.hero_title ?? "Vive tu Juego."} />
         <Textarea label="Subtítulo" name="hero_subtitle" defaultValue={settings.hero_subtitle ?? ""} />
+      </Card>
+
+      <Card className="flex flex-col gap-4">
+        <h2 className="text-sm font-semibold text-zinc-900">
+          Tarjetas con ícono (home)
+        </h2>
+        <p className="text-xs text-zinc-500">
+          Las 3 tarjetas que aparecen debajo del hero. El ícono de cada una es
+          fijo, solo el texto es editable.
+        </p>
+        {[1, 2, 3].map((n) => {
+          const titleKey = `feature${n}_title` as keyof Settings;
+          const textKey = `feature${n}_text` as keyof Settings;
+          const defaults = FEATURE_DEFAULTS[n - 1];
+          return (
+            <div key={n} className="flex flex-col gap-3 border-t border-zinc-200 pt-3 first:border-0 first:pt-0">
+              <Input
+                label={`Título ${n}`}
+                name={titleKey}
+                defaultValue={(settings[titleKey] as string | null) ?? defaults.title}
+              />
+              <Textarea
+                label={`Descripción ${n}`}
+                name={textKey}
+                defaultValue={(settings[textKey] as string | null) ?? defaults.description}
+              />
+            </div>
+          );
+        })}
       </Card>
 
       <Card className="flex flex-col gap-4">

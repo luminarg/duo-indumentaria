@@ -59,7 +59,13 @@ export default async function Home() {
         }
       />
 
-      <FeatureCards />
+      <FeatureCards
+        features={[
+          { title: settings?.feature1_title ?? "", description: settings?.feature1_text ?? "" },
+          { title: settings?.feature2_title ?? "", description: settings?.feature2_text ?? "" },
+          { title: settings?.feature3_title ?? "", description: settings?.feature3_text ?? "" },
+        ]}
+      />
 
       <DesignsGallery
         images={(images ?? []).map((img) => ({ id: img.id, url: img.image_url, alt: businessName }))}
