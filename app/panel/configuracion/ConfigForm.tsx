@@ -5,7 +5,9 @@ import { updateBusinessSettings } from "./actions";
 import { Card } from "../../components/ui/Card";
 import { Input, Textarea } from "../../components/ui/Input";
 import { Button } from "../../components/ui/Button";
-import { FEATURE_DEFAULTS } from "../../components/FeatureCards";
+import { SlidersManager } from "./SlidersManager";
+import { FeatureCardsManager } from "./FeatureCardsManager";
+import { cn } from "@/lib/cn";
 
 type Settings = {
   business_name: string;
@@ -21,18 +23,48 @@ type Settings = {
   show_prices: boolean;
   hero_title?: string | null;
   hero_subtitle?: string | null;
-  feature1_title?: string | null;
-  feature1_text?: string | null;
-  feature2_title?: string | null;
-  feature2_text?: string | null;
-  feature3_title?: string | null;
-  feature3_text?: string | null;
   quote_header_text?: string | null;
   quote_footer_text?: string | null;
   quote_validity_days?: number;
 };
 
-export function ConfigForm({ settings }: { settings: Settings }) {
+type Slider = {
+  id: string;
+  image_url: string;
+  title: string | null;
+  subtitle: string | null;
+  active: boolean;
+  sort_order: number;
+};
+
+type Feature = {
+  id: string;
+  icon: string;
+  title: string;
+  description: string;
+  sort_order: number;
+  active: boolean;
+};
+
+const TABS = [
+  { key: "negocio", label: "Negocio" },
+  { key: "home", label: "Home" },
+  { key: "contacto", label: "Contacto" },
+  { key: "presupuestos", label: "Presupuestos" },
+] as const;
+
+type TabKey = (typeof TABS)[number]["key"];
+
+export function ConfigForm({
+  settings,
+  sliders,
+  features,
+}: {
+  settings: Settings;
+  sliders: Slider[];
+  features: Feature[];
+}) {
+  const [tab, setTab] = useState<TabKey>("negocio");
   const [isPending, startTransition] = useTransition();
   const [message, setMessage] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -55,171 +87,186 @@ export function ConfigForm({ settings }: { settings: Settings }) {
   }
 
   return (
-    <form onSubmit={handleSubmit} className="flex max-w-2xl flex-col gap-6">
+    <div className="flex max-w-2xl flex-col gap-6">
       {message && (
         <div className="rounded-md bg-green-50 px-4 py-3 text-sm text-green-800">{message}</div>
       )}
       {error && <div className="rounded-md bg-red-50 px-4 py-3 text-sm text-red-800">{error}</div>}
 
-      <Card className="flex flex-col gap-4">
-        <h2 className="text-sm font-semibold text-zinc-900">Datos del negocio</h2>
-        <Input label="Nombre" name="business_name" defaultValue={settings.business_name} />
+      <div className="flex gap-1 border-b border-zinc-200">
+        {TABS.map((t) => (
+          <button
+            key={t.key}
+            type="button"
+            onClick={() => setTab(t.key)}
+            className={cn(
+              "-mb-px border-b-2 px-4 py-2 text-sm font-medium transition-colors",
+              tab === t.key
+                ? "border-zinc-900 text-zinc-900"
+                : "border-transparent text-zinc-500 hover:text-zinc-700"
+            )}
+          >
+            {t.label}
+          </button>
+        ))}
+      </div>
 
-        <label className="flex flex-col gap-1 text-xs font-medium text-zinc-500">
-          Logo
-          <input
-            type="file"
-            name="logo"
-            accept="image/*"
-            onChange={(e) => {
-              const file = e.target.files?.[0];
-              if (file) setLogoPreview(URL.createObjectURL(file));
-            }}
-            className="mt-1 block w-full text-sm text-zinc-600"
-          />
-        </label>
-        {logoPreview && (
-          // eslint-disable-next-line @next/next/no-img-element
-          <img src={logoPreview} alt="Logo" className="h-16 w-auto rounded bg-zinc-900 p-2" />
-        )}
+      {/* Un solo <form>: las pestañas solo esconden secciones con CSS (no
+          las desmontan), así "Guardar cambios" siempre manda todos los
+          campos juntos sin importar en qué pestaña estás parado. */}
+      <form onSubmit={handleSubmit} className="flex flex-col gap-6">
+        <div className={cn("flex flex-col gap-6", tab !== "negocio" && "hidden")}>
+          <Card className="flex flex-col gap-4">
+            <h2 className="text-sm font-semibold text-zinc-900">Datos del negocio</h2>
+            <Input label="Nombre" name="business_name" defaultValue={settings.business_name} />
 
-        <label className="flex flex-col gap-1 text-xs font-medium text-zinc-500">
-          Favicon (ícono de la pestaña del navegador)
-          <input
-            type="file"
-            name="favicon"
-            accept="image/png,image/x-icon,image/svg+xml,image/jpeg"
-            onChange={(e) => {
-              const file = e.target.files?.[0];
-              if (file) setFaviconPreview(URL.createObjectURL(file));
-            }}
-            className="mt-1 block w-full text-sm text-zinc-600"
-          />
-        </label>
-        {faviconPreview && (
-          <div className="flex items-center gap-2">
-            {/* eslint-disable-next-line @next/next/no-img-element */}
-            <img src={faviconPreview} alt="Favicon" className="h-8 w-8 rounded bg-zinc-900 object-contain p-1" />
-            <span className="text-xs text-zinc-400">Recomendado: imagen cuadrada (ej. 512×512px)</span>
-          </div>
-        )}
-      </Card>
-
-      <Card className="flex flex-col gap-4">
-        <h2 className="text-sm font-semibold text-zinc-900">Colores del sitio</h2>
-        <div className="flex gap-6">
-          <label className="text-xs font-medium text-zinc-500">
-            Color principal (fondo)
-            <input
-              type="color"
-              name="primary_color"
-              defaultValue={settings.primary_color}
-              className="mt-1 block h-10 w-16 rounded border border-zinc-300"
-            />
-          </label>
-          <label className="text-xs font-medium text-zinc-500">
-            Color de acento (botones)
-            <input
-              type="color"
-              name="secondary_color"
-              defaultValue={settings.secondary_color}
-              className="mt-1 block h-10 w-16 rounded border border-zinc-300"
-            />
-          </label>
-        </div>
-      </Card>
-
-      <Card className="flex flex-col gap-4">
-        <h2 className="text-sm font-semibold text-zinc-900">Textos del hero (home)</h2>
-        <Input label="Título" name="hero_title" defaultValue={settings.hero_title ?? "Vive tu Juego."} />
-        <Textarea label="Subtítulo" name="hero_subtitle" defaultValue={settings.hero_subtitle ?? ""} />
-      </Card>
-
-      <Card className="flex flex-col gap-4">
-        <h2 className="text-sm font-semibold text-zinc-900">
-          Tarjetas con ícono (home)
-        </h2>
-        <p className="text-xs text-zinc-500">
-          Las 3 tarjetas que aparecen debajo del hero. El ícono de cada una es
-          fijo, solo el texto es editable.
-        </p>
-        {[1, 2, 3].map((n) => {
-          const titleKey = `feature${n}_title` as keyof Settings;
-          const textKey = `feature${n}_text` as keyof Settings;
-          const defaults = FEATURE_DEFAULTS[n - 1];
-          return (
-            <div key={n} className="flex flex-col gap-3 border-t border-zinc-200 pt-3 first:border-0 first:pt-0">
-              <Input
-                label={`Título ${n}`}
-                name={titleKey}
-                defaultValue={(settings[titleKey] as string | null) ?? defaults.title}
+            <label className="flex flex-col gap-1 text-xs font-medium text-zinc-500">
+              Logo
+              <input
+                type="file"
+                name="logo"
+                accept="image/*"
+                onChange={(e) => {
+                  const file = e.target.files?.[0];
+                  if (file) setLogoPreview(URL.createObjectURL(file));
+                }}
+                className="mt-1 block w-full text-sm text-zinc-600"
               />
-              <Textarea
-                label={`Descripción ${n}`}
-                name={textKey}
-                defaultValue={(settings[textKey] as string | null) ?? defaults.description}
+            </label>
+            {logoPreview && (
+              // eslint-disable-next-line @next/next/no-img-element
+              <img src={logoPreview} alt="Logo" className="h-16 w-auto rounded bg-zinc-900 p-2" />
+            )}
+
+            <label className="flex flex-col gap-1 text-xs font-medium text-zinc-500">
+              Favicon (ícono de la pestaña del navegador)
+              <input
+                type="file"
+                name="favicon"
+                accept="image/png,image/x-icon,image/svg+xml,image/jpeg"
+                onChange={(e) => {
+                  const file = e.target.files?.[0];
+                  if (file) setFaviconPreview(URL.createObjectURL(file));
+                }}
+                className="mt-1 block w-full text-sm text-zinc-600"
               />
+            </label>
+            {faviconPreview && (
+              <div className="flex items-center gap-2">
+                {/* eslint-disable-next-line @next/next/no-img-element */}
+                <img
+                  src={faviconPreview}
+                  alt="Favicon"
+                  className="h-8 w-8 rounded bg-zinc-900 object-contain p-1"
+                />
+                <span className="text-xs text-zinc-400">Recomendado: imagen cuadrada (ej. 512×512px)</span>
+              </div>
+            )}
+          </Card>
+
+          <Card className="flex flex-col gap-4">
+            <h2 className="text-sm font-semibold text-zinc-900">Colores del sitio</h2>
+            <div className="flex gap-6">
+              <label className="text-xs font-medium text-zinc-500">
+                Color principal (fondo)
+                <input
+                  type="color"
+                  name="primary_color"
+                  defaultValue={settings.primary_color}
+                  className="mt-1 block h-10 w-16 rounded border border-zinc-300"
+                />
+              </label>
+              <label className="text-xs font-medium text-zinc-500">
+                Color de acento (botones)
+                <input
+                  type="color"
+                  name="secondary_color"
+                  defaultValue={settings.secondary_color}
+                  className="mt-1 block h-10 w-16 rounded border border-zinc-300"
+                />
+              </label>
             </div>
-          );
-        })}
-      </Card>
+          </Card>
 
-      <Card className="flex flex-col gap-4">
-        <h2 className="text-sm font-semibold text-zinc-900">Contacto y redes</h2>
-        <Input
-          label="WhatsApp (solo números, con código de país)"
-          name="whatsapp_number"
-          defaultValue={settings.whatsapp_number ?? ""}
-          placeholder="543534848150"
-        />
-        <Input label="Email de contacto" name="contact_email" defaultValue={settings.contact_email ?? ""} />
-        <Input label="Dirección" name="address" defaultValue={settings.address ?? ""} />
-        <Input
-          label="Instagram (link completo)"
-          name="social_instagram"
-          defaultValue={settings.social_instagram ?? ""}
-        />
-        <Input
-          label="Facebook (link completo)"
-          name="social_facebook"
-          defaultValue={settings.social_facebook ?? ""}
-        />
-      </Card>
+          <Card>
+            <label className="flex items-center gap-2 text-sm text-zinc-700">
+              <input type="checkbox" name="show_prices" defaultChecked={settings.show_prices} />
+              Mostrar precios en el catálogo público
+            </label>
+          </Card>
+        </div>
 
-      <Card className="flex flex-col gap-4">
-        <h2 className="text-sm font-semibold text-zinc-900">Textos del presupuesto (PDF)</h2>
-        <Textarea
-          label="Encabezado (opcional)"
-          name="quote_header_text"
-          defaultValue={settings.quote_header_text ?? ""}
-        />
-        <Textarea
-          label="Pie / condiciones"
-          name="quote_footer_text"
-          defaultValue={
-            settings.quote_footer_text ??
-            "El presupuesto no incluye IVA. Necesitamos una seña del 50% para confirmar el pedido."
-          }
-        />
-        <Input
-          label="Validez por defecto (días)"
-          type="number"
-          name="quote_validity_days"
-          defaultValue={settings.quote_validity_days ?? 7}
-          className="w-32"
-        />
-      </Card>
+        <div className={cn("flex flex-col gap-6", tab !== "home" && "hidden")}>
+          <Card className="flex flex-col gap-4">
+            <h2 className="text-sm font-semibold text-zinc-900">Textos del hero (home)</h2>
+            <Input label="Título" name="hero_title" defaultValue={settings.hero_title ?? "Vive tu Juego."} />
+            <Textarea label="Subtítulo" name="hero_subtitle" defaultValue={settings.hero_subtitle ?? ""} />
+          </Card>
+        </div>
 
-      <Card>
-        <label className="flex items-center gap-2 text-sm text-zinc-700">
-          <input type="checkbox" name="show_prices" defaultChecked={settings.show_prices} />
-          Mostrar precios en el catálogo público
-        </label>
-      </Card>
+        <div className={cn("flex flex-col gap-6", tab !== "contacto" && "hidden")}>
+          <Card className="flex flex-col gap-4">
+            <h2 className="text-sm font-semibold text-zinc-900">Contacto y redes</h2>
+            <Input
+              label="WhatsApp (solo números, con código de país)"
+              name="whatsapp_number"
+              defaultValue={settings.whatsapp_number ?? ""}
+              placeholder="543534848150"
+            />
+            <Input label="Email de contacto" name="contact_email" defaultValue={settings.contact_email ?? ""} />
+            <Input label="Dirección" name="address" defaultValue={settings.address ?? ""} />
+            <Input
+              label="Instagram (link completo)"
+              name="social_instagram"
+              defaultValue={settings.social_instagram ?? ""}
+            />
+            <Input
+              label="Facebook (link completo)"
+              name="social_facebook"
+              defaultValue={settings.social_facebook ?? ""}
+            />
+          </Card>
+        </div>
 
-      <Button type="submit" disabled={isPending} className="self-start">
-        {isPending ? "Guardando..." : "Guardar cambios"}
-      </Button>
-    </form>
+        <div className={cn("flex flex-col gap-6", tab !== "presupuestos" && "hidden")}>
+          <Card className="flex flex-col gap-4">
+            <h2 className="text-sm font-semibold text-zinc-900">Textos del presupuesto (PDF)</h2>
+            <Textarea
+              label="Encabezado (opcional)"
+              name="quote_header_text"
+              defaultValue={settings.quote_header_text ?? ""}
+            />
+            <Textarea
+              label="Pie / condiciones"
+              name="quote_footer_text"
+              defaultValue={
+                settings.quote_footer_text ??
+                "El presupuesto no incluye IVA. Necesitamos una seña del 50% para confirmar el pedido."
+              }
+            />
+            <Input
+              label="Validez por defecto (días)"
+              type="number"
+              name="quote_validity_days"
+              defaultValue={settings.quote_validity_days ?? 7}
+              className="w-32"
+            />
+          </Card>
+        </div>
+
+        <Button type="submit" disabled={isPending} className="self-start">
+          {isPending ? "Guardando..." : "Guardar cambios"}
+        </Button>
+      </form>
+
+      {/* Fuera del <form> de arriba a propósito (site_features y
+          site_sliders tienen su propio CRUD con sus propios forms — no
+          pueden ir anidados dentro de otro <form>). Solo se muestran en
+          la pestaña Home. */}
+      <div className={cn("flex flex-col gap-8", tab !== "home" && "hidden")}>
+        <FeatureCardsManager features={features} />
+        <SlidersManager sliders={sliders} />
+      </div>
+    </div>
   );
 }

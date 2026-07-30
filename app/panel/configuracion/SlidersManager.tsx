@@ -36,7 +36,7 @@ export function SlidersManager({ sliders }: { sliders: Slider[] }) {
   }
 
   return (
-    <div className="mt-10 max-w-2xl">
+    <div className="max-w-2xl">
       <h2 className="text-sm font-semibold text-zinc-900">Sliders de la home</h2>
       <p className="mt-1 text-xs text-zinc-500">
         La primera imagen activa (por orden) se usa como fondo del hero en la home.

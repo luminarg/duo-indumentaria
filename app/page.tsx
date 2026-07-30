@@ -10,7 +10,7 @@ import { SiteFooter } from "./components/SiteFooter";
 export default async function Home() {
   const supabase = await createClient();
 
-  const [{ data: settings }, { data: sliders }, { data: images }] = await Promise.all([
+  const [{ data: settings }, { data: sliders }, { data: images }, { data: features }] = await Promise.all([
     supabase.from("business_settings").select("*").eq("id", 1).single(),
     supabase
       .from("site_sliders")
@@ -23,6 +23,11 @@ export default async function Home() {
       .eq("active", true)
       .order("sort_order", { ascending: true })
       .limit(8),
+    supabase
+      .from("site_features")
+      .select("id, icon, title, description")
+      .eq("active", true)
+      .order("sort_order", { ascending: true }),
   ]);
 
   const businessName = settings?.business_name ?? "Duo Indumentaria";
@@ -59,13 +64,7 @@ export default async function Home() {
         }
       />
 
-      <FeatureCards
-        features={[
-          { title: settings?.feature1_title ?? "", description: settings?.feature1_text ?? "" },
-          { title: settings?.feature2_title ?? "", description: settings?.feature2_text ?? "" },
-          { title: settings?.feature3_title ?? "", description: settings?.feature3_text ?? "" },
-        ]}
-      />
+      <FeatureCards features={features ?? []} />
 
       <DesignsGallery
         images={(images ?? []).map((img) => ({ id: img.id, url: img.image_url, alt: businessName }))}

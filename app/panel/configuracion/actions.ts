@@ -59,12 +59,6 @@ export async function updateBusinessSettings(formData: FormData) {
     show_prices: formData.get("show_prices") === "on",
     hero_title: String(formData.get("hero_title") || "") || null,
     hero_subtitle: String(formData.get("hero_subtitle") || "") || null,
-    feature1_title: String(formData.get("feature1_title") || "") || null,
-    feature1_text: String(formData.get("feature1_text") || "") || null,
-    feature2_title: String(formData.get("feature2_title") || "") || null,
-    feature2_text: String(formData.get("feature2_text") || "") || null,
-    feature3_title: String(formData.get("feature3_title") || "") || null,
-    feature3_text: String(formData.get("feature3_text") || "") || null,
     quote_header_text: String(formData.get("quote_header_text") || "") || null,
     quote_footer_text: String(formData.get("quote_footer_text") || "") || null,
     quote_validity_days: Number(formData.get("quote_validity_days") || 7),
@@ -118,6 +112,68 @@ export async function deleteSlider(id: string) {
   const admin = createAdminClient();
   const { error } = await admin.from("site_sliders").delete().eq("id", id);
   if (error) throw new Error("No se pudo borrar el slider: " + error.message);
+  revalidatePath("/panel/configuracion");
+  revalidatePath("/");
+}
+
+export async function createFeature(formData: FormData) {
+  await requireTeamMember();
+  const supabase = await createClient();
+
+  const title = String(formData.get("title") || "").trim();
+  const description = String(formData.get("description") || "").trim();
+  if (!title || !description) throw new Error("Falta título o descripción");
+
+  const { error } = await supabase.from("site_features").insert({
+    icon: String(formData.get("icon") || "shirt"),
+    title,
+    description,
+    sort_order: Number(formData.get("sort_order") || 0),
+    active: true,
+  });
+  if (error) throw new Error("No se pudo crear la tarjeta: " + error.message);
+
+  revalidatePath("/panel/configuracion");
+  revalidatePath("/");
+}
+
+export async function updateFeature(id: string, formData: FormData) {
+  await requireTeamMember();
+  const supabase = await createClient();
+
+  const title = String(formData.get("title") || "").trim();
+  const description = String(formData.get("description") || "").trim();
+  if (!title || !description) throw new Error("Falta título o descripción");
+
+  const { error } = await supabase
+    .from("site_features")
+    .update({
+      icon: String(formData.get("icon") || "shirt"),
+      title,
+      description,
+      sort_order: Number(formData.get("sort_order") || 0),
+    })
+    .eq("id", id);
+  if (error) throw new Error("No se pudo guardar la tarjeta: " + error.message);
+
+  revalidatePath("/panel/configuracion");
+  revalidatePath("/");
+}
+
+export async function toggleFeature(id: string, active: boolean) {
+  await requireTeamMember();
+  const supabase = await createClient();
+  const { error } = await supabase.from("site_features").update({ active }).eq("id", id);
+  if (error) throw new Error("No se pudo actualizar la tarjeta: " + error.message);
+  revalidatePath("/panel/configuracion");
+  revalidatePath("/");
+}
+
+export async function deleteFeature(id: string) {
+  await requireTeamMember();
+  const supabase = await createClient();
+  const { error } = await supabase.from("site_features").delete().eq("id", id);
+  if (error) throw new Error("No se pudo borrar la tarjeta: " + error.message);
   revalidatePath("/panel/configuracion");
   revalidatePath("/");
 }
