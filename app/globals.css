@@ -1,0 +1,189 @@
+@import "tailwindcss";
+
+/* Tema por defecto: claro, para el panel interno (backend) y el
+   formulario público de pedido — son pantallas de trabajo, priorizan
+   legibilidad por sobre el branding. El sitio institucional (home) fuerza
+   su propio fondo negro con una clase local (`bg-black`), así que no
+   hereda esto. */
+:root {
+  --background: #ffffff;
+  --foreground: #18181b;
+  --muted: #a1a1aa;
+  --accent: #16a34a;
+  --accent-foreground: #ffffff;
+}
+
+@theme inline {
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --color-muted: var(--muted);
+  --color-accent: var(--accent);
+  --color-accent-foreground: var(--accent-foreground);
+  --font-sans: var(--font-geist-sans);
+  --font-mono: var(--font-geist-mono);
+}
+
+body {
+  background: var(--background);
+  color: var(--foreground);
+  font-family: var(--font-sans), Arial, Helvetica, sans-serif;
+}
+
+/* ============================================================================
+   LIQUID GLASS — sistema de vidrio esmerilado para el panel interno.
+   Necesita un fondo con profundidad detrás (el gradiente + blobs fixed de
+   app/panel/layout.tsx) — sin eso el backdrop-filter no tiene nada que
+   difuminar y el efecto se pierde. Regla general: cuanto más "encima" está
+   el elemento, más blur y más opaco (cards = sutil, modales = fuerte).
+   ============================================================================ */
+
+.glass-card {
+  background: rgba(255, 255, 255, 0.18);
+  backdrop-filter: blur(72px) saturate(220%) brightness(1.08);
+  -webkit-backdrop-filter: blur(72px) saturate(220%) brightness(1.08);
+  border: 1px solid rgba(255, 255, 255, 0.82);
+  box-shadow:
+    inset 0 1.5px 0 rgba(255, 255, 255, 1),
+    0 4px 28px rgba(0, 0, 0, 0.07);
+}
+
+/* Variante oscura, para superficies sobre fondo oscuro (pensada para un
+   futuro modo oscuro de toda la app, donde el body pasa a ser oscuro y
+   esta card flota sobre ese mismo fondo). */
+.glass-card-dark {
+  background: rgba(255, 255, 255, 0.07);
+  backdrop-filter: blur(40px) saturate(180%);
+  -webkit-backdrop-filter: blur(40px) saturate(180%);
+  border: 1px solid rgba(255, 255, 255, 0.11);
+  box-shadow:
+    inset 0 1.5px 0 rgba(255, 255, 255, 0.12),
+    0 4px 28px rgba(0, 0, 0, 0.35);
+}
+
+/* Sidebar: a diferencia de .glass-card-dark, acá SÍ hay un fondo claro
+   detrás (el gradiente del panel), así que no puede ser casi transparente
+   o se lava. Queda casi opaca (92%) con blur + un filo superior/lateral
+   traslúcido para seguir la misma lógica de "vidrio" sin perder legibilidad. */
+.glass-sidebar {
+  background: rgba(9, 9, 11, 0.92);
+  backdrop-filter: blur(40px) saturate(180%);
+  -webkit-backdrop-filter: blur(40px) saturate(180%);
+  border-right: 1px solid rgba(255, 255, 255, 0.08);
+  box-shadow:
+    inset -1px 0 0 rgba(255, 255, 255, 0.04),
+    inset 0 1.5px 0 rgba(255, 255, 255, 0.06);
+}
+
+.glass-modal {
+  background: rgba(255, 255, 255, 0.72);
+  backdrop-filter: blur(120px) saturate(240%) brightness(1.06);
+  -webkit-backdrop-filter: blur(120px) saturate(240%) brightness(1.06);
+  border: 1px solid rgba(255, 255, 255, 0.9);
+  box-shadow:
+    inset 0 1.5px 0 rgba(255, 255, 255, 1),
+    0 24px 64px rgba(0, 0, 0, 0.18);
+}
+
+.modal-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 50;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(0, 0, 0, 0.35);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  padding: 1rem;
+}
+
+/* Botón glass, con el shine diagonal característico. Se usa junto con las
+   clases de Tailwind para tamaño/tipografía; esta clase solo pone el fondo,
+   blur y borde. */
+.glass-btn {
+  position: relative;
+  overflow: hidden;
+  background: rgba(255, 255, 255, 0.08);
+  border: 1px solid rgba(255, 255, 255, 0.82);
+  backdrop-filter: blur(28px) saturate(200%) brightness(1.1);
+  -webkit-backdrop-filter: blur(28px) saturate(200%) brightness(1.1);
+  box-shadow:
+    inset 0 2px 0 rgba(255, 255, 255, 1),
+    inset 0 -1px 0 rgba(0, 0, 0, 0.04),
+    0 2px 12px rgba(0, 0, 0, 0.08);
+  transition: box-shadow 0.15s, background 0.15s;
+}
+.glass-btn::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  background: linear-gradient(
+    130deg,
+    rgba(255, 255, 255, 0.75) 0%,
+    rgba(235, 220, 255, 0.25) 30%,
+    transparent 60%
+  );
+  pointer-events: none;
+}
+.glass-btn:hover {
+  background: rgba(255, 255, 255, 0.18);
+}
+.glass-btn:active {
+  filter: brightness(0.94);
+}
+
+/* Badges con el mismo shine sutil, en variantes de color para los distintos
+   estados de pedidos/tareas. */
+.glass-badge {
+  position: relative;
+  overflow: hidden;
+  backdrop-filter: blur(12px) saturate(160%);
+  -webkit-backdrop-filter: blur(12px) saturate(160%);
+  box-shadow:
+    inset 0 1.5px 0 rgba(255, 255, 255, 0.85),
+    0 2px 6px rgba(0, 0, 0, 0.07);
+}
+.glass-badge::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  background: linear-gradient(130deg, rgba(255, 255, 255, 0.82) 0%, rgba(255, 255, 255, 0.25) 35%, transparent 60%);
+  pointer-events: none;
+}
+.glass-badge-gray {
+  background: rgba(229, 231, 235, 0.5);
+  color: #4b5563;
+  border: 1px solid rgba(209, 213, 219, 0.55);
+}
+.glass-badge-blue {
+  background: rgba(191, 219, 254, 0.45);
+  color: #1d4ed8;
+  border: 1px solid rgba(147, 197, 253, 0.5);
+}
+.glass-badge-purple {
+  background: rgba(233, 213, 255, 0.45);
+  color: #7e22ce;
+  border: 1px solid rgba(216, 180, 254, 0.5);
+}
+.glass-badge-orange {
+  background: rgba(254, 215, 170, 0.45);
+  color: #c2410c;
+  border: 1px solid rgba(253, 186, 116, 0.5);
+}
+.glass-badge-amber {
+  background: rgba(253, 230, 138, 0.45);
+  color: #92400e;
+  border: 1px solid rgba(252, 211, 77, 0.5);
+}
+.glass-badge-green {
+  background: rgba(187, 247, 208, 0.45);
+  color: #15803d;
+  border: 1px solid rgba(134, 239, 172, 0.5);
+}
+.glass-badge-red {
+  background: rgba(254, 202, 202, 0.45);
+  color: #b91c1c;
+  border: 1px solid rgba(252, 165, 165, 0.5);
+}

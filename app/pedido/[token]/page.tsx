@@ -1,0 +1,85 @@
+import { notFound } from "next/navigation";
+import { createAdminClient } from "@/lib/supabase/admin";
+import { PedidoForm } from "./PedidoForm";
+import { OrderTrackingView } from "./OrderTrackingView";
+
+// Página pública SIN LOGIN. El cliente llega acá con el link que le mandó
+// el hermano por WhatsApp: /pedido/<token>. Buscamos el pedido por token
+// usando el cliente admin (service role) — no se expone la tabla completa.
+export default async function PedidoPublicoPage({
+  params,
+}: {
+  params: Promise<{ token: string }>;
+}) {
+  const { token } = await params;
+  const supabase = createAdminClient();
+
+  const { data: order, error } = await supabase
+    .from("orders")
+    .select(
+      "id, order_number, status, team_or_group_name, contact_name, contact_phone, contact_email, general_notes, estimated_delivery_date"
+    )
+    .eq("public_token", token)
+    .single();
+
+  if (error || !order) {
+    notFound();
+  }
+
+  const { data: settings } = await supabase
+    .from("business_settings")
+    .select("business_name, logo_url, primary_color")
+    .eq("id", 1)
+    .single();
+
+  const businessName = settings?.business_name ?? "Duo Indumentaria";
+  const logoUrl = settings?.logo_url ?? null;
+  const primaryColor = settings?.primary_color ?? "#0a0a0a";
+
+  if (order.status !== "borrador" && order.status !== "cargado_por_cliente") {
+    return (
+      <OrderTrackingView
+        orderNumber={order.order_number}
+        status={order.status}
+        estimatedDeliveryDate={order.estimated_delivery_date ?? null}
+        businessName={businessName}
+        logoUrl={logoUrl}
+        primaryColor={primaryColor}
+      />
+    );
+  }
+
+  // Recursos ya subidos (logo a estampar, mockups, referencias) — están en
+  // un bucket privado, generamos URLs firmadas solo para esta vista.
+  const { data: resources } = await supabase
+    .from("order_resources")
+    .select("*")
+    .eq("order_id", order.id)
+    .order("uploaded_at", { ascending: false });
+
+  const resourcesWithUrls = await Promise.all(
+    (resources ?? []).map(async (r) => {
+      const { data: signed } = await supabase.storage.from("order-resources").createSignedUrl(r.file_url, 60 * 60);
+      return { ...r, signedUrl: signed?.signedUrl ?? null };
+    })
+  );
+
+  return (
+    <div className="mx-auto max-w-2xl px-6 py-16">
+      {logoUrl && (
+        <div className="mb-6 inline-flex rounded-lg bg-black px-5 py-3">
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img src={logoUrl} alt={businessName} className="h-10 w-auto object-contain" />
+        </div>
+      )}
+      <h1 className="text-2xl font-semibold text-zinc-900">
+        Pedido {order.order_number}
+      </h1>
+      <p className="mt-2 text-zinc-600">
+        Completá los datos de tu pedido. Podés volver a este link para revisar
+        o corregir mientras no esté confirmado.
+      </p>
+      <PedidoForm orderId={order.id} token={token} defaultValues={order} resources={resourcesWithUrls} />
+    </div>
+  );
+}
