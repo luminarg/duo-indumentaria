@@ -74,6 +74,15 @@ body {
     inset 0 1.5px 0 rgba(255, 255, 255, 0.06);
 }
 
+/* Padding superior del contenido en mobile: deja lugar a la barra fija del
+   panel + el notch/safe-area cuando la PWA corre instalada en un iPhone
+   (11 y similares). En desktop no aplica — ahí no hay barra superior. */
+@media (max-width: 767px) {
+  .panel-main-safe-pt {
+    padding-top: calc(env(safe-area-inset-top) + 4rem);
+  }
+}
+
 /* Misma lógica que .glass-sidebar pero para la barra superior que aparece
    en mobile (el borde va abajo en vez de al costado). */
 .glass-topbar {

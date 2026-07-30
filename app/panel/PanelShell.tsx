@@ -39,8 +39,13 @@ export function PanelShell({
       <div className="pointer-events-none fixed top-10 right-0 -z-10 h-[26rem] w-[26rem] rounded-full bg-emerald-300/30 blur-3xl" />
       <div className="pointer-events-none fixed bottom-0 left-1/3 -z-10 h-72 w-72 rounded-full bg-fuchsia-300/20 blur-3xl" />
 
-      {/* Barra superior — solo mobile */}
-      <div className="glass-topbar fixed inset-x-0 top-0 z-30 flex items-center gap-3 px-4 py-3 md:hidden">
+      {/* Barra superior — solo mobile. padding-top con env(safe-area-inset-top)
+          para no quedar debajo del notch cuando está instalada como PWA
+          (iPhone 11 y similares). */}
+      <div
+        className="glass-topbar fixed inset-x-0 top-0 z-30 flex items-center gap-3 px-4 pb-3 md:hidden"
+        style={{ paddingTop: "calc(env(safe-area-inset-top) + 0.75rem)" }}
+      >
         <button
           onClick={() => setOpen(true)}
           aria-label="Abrir menú"
@@ -67,10 +72,14 @@ export function PanelShell({
 
       <aside
         className={cn(
-          "glass-sidebar fixed inset-y-0 left-0 z-50 flex w-64 shrink-0 flex-col px-4 py-6 transition-transform duration-200 ease-out",
+          "glass-sidebar fixed inset-y-0 left-0 z-50 flex w-64 shrink-0 flex-col px-4 transition-transform duration-200 ease-out",
           "md:static md:z-auto md:w-60 md:translate-x-0",
           open ? "translate-x-0" : "-translate-x-full"
         )}
+        style={{
+          paddingTop: "calc(env(safe-area-inset-top) + 1.5rem)",
+          paddingBottom: "calc(env(safe-area-inset-bottom) + 1.5rem)",
+        }}
       >
         <div className="mb-8 flex items-center justify-between gap-2 px-2">
           <div className="flex items-center gap-2">
@@ -98,7 +107,12 @@ export function PanelShell({
         </form>
       </aside>
 
-      <main className="flex-1 overflow-y-auto p-8 pt-20 md:pt-8">{children}</main>
+      <main
+        className="panel-main-safe-pt flex-1 overflow-y-auto p-8"
+        style={{ paddingBottom: "calc(env(safe-area-inset-bottom) + 2rem)" }}
+      >
+        {children}
+      </main>
     </div>
   );
 }
