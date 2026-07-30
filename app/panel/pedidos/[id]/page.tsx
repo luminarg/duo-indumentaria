@@ -3,6 +3,7 @@ import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { PageHeader } from "../../../components/ui/PageHeader";
 import { Button } from "../../../components/ui/Button";
+import { ShareOrderLink } from "../../../components/ui/ShareOrderLink";
 import { OrderDetail } from "./OrderDetail";
 
 export default async function OrderDetailPage({
@@ -35,18 +36,26 @@ export default async function OrderDetailPage({
   );
 
   const siteUrl = process.env.NEXT_PUBLIC_SITE_URL || "http://localhost:3000";
+  const orderLink = `${siteUrl}/pedido/${order.public_token}`;
 
   return (
     <div>
       <PageHeader
         title={`Pedido ${order.order_number}`}
-        description={`Link para el cliente: ${siteUrl}/pedido/${order.public_token}`}
+        description={`Link para el cliente: ${orderLink}`}
         action={
-          <a href={`/api/pedidos/${order.id}/informe`} target="_blank" rel="noopener noreferrer">
-            <Button type="button" variant="secondary">
-              Descargar informe
-            </Button>
-          </a>
+          <div className="flex items-center gap-2">
+            <ShareOrderLink
+              link={orderLink}
+              orderNumber={order.order_number}
+              contactPhone={order.contact_phone}
+            />
+            <a href={`/api/pedidos/${order.id}/informe`} target="_blank" rel="noopener noreferrer">
+              <Button type="button" variant="secondary">
+                Descargar informe
+              </Button>
+            </a>
+          </div>
         }
       />
       <OrderDetail order={order} details={details} items={items ?? []} resources={resourcesWithUrls} />

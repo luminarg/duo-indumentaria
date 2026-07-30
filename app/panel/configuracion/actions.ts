@@ -41,6 +41,12 @@ export async function updateBusinessSettings(formData: FormData) {
     logoUrl = await uploadImage(admin, logoFile, "logo");
   }
 
+  const faviconFile = formData.get("favicon") as File | null;
+  let faviconUrl: string | undefined;
+  if (faviconFile && faviconFile.size > 0) {
+    faviconUrl = await uploadImage(admin, faviconFile, "favicon");
+  }
+
   const payload: Record<string, unknown> = {
     business_name: String(formData.get("business_name") || "Duo Indumentaria"),
     whatsapp_number: String(formData.get("whatsapp_number") || "") || null,
@@ -59,12 +65,13 @@ export async function updateBusinessSettings(formData: FormData) {
     updated_at: new Date().toISOString(),
   };
   if (logoUrl) payload.logo_url = logoUrl;
+  if (faviconUrl) payload.favicon_url = faviconUrl;
 
   const { error } = await admin.from("business_settings").update(payload).eq("id", 1);
   if (error) throw new Error("No se pudo guardar: " + error.message);
 
   revalidatePath("/panel/configuracion");
-  revalidatePath("/");
+  revalidatePath("/", "layout");
 }
 
 export async function createSlider(formData: FormData) {

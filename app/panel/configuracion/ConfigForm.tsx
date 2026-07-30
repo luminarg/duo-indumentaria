@@ -9,6 +9,7 @@ import { Button } from "../../components/ui/Button";
 type Settings = {
   business_name: string;
   logo_url: string | null;
+  favicon_url: string | null;
   whatsapp_number: string | null;
   contact_email: string | null;
   address: string | null;
@@ -29,6 +30,7 @@ export function ConfigForm({ settings }: { settings: Settings }) {
   const [message, setMessage] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [logoPreview, setLogoPreview] = useState<string | null>(settings.logo_url);
+  const [faviconPreview, setFaviconPreview] = useState<string | null>(settings.favicon_url);
 
   function handleSubmit(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault();
@@ -72,6 +74,27 @@ export function ConfigForm({ settings }: { settings: Settings }) {
         {logoPreview && (
           // eslint-disable-next-line @next/next/no-img-element
           <img src={logoPreview} alt="Logo" className="h-16 w-auto rounded bg-zinc-900 p-2" />
+        )}
+
+        <label className="flex flex-col gap-1 text-xs font-medium text-zinc-500">
+          Favicon (ícono de la pestaña del navegador)
+          <input
+            type="file"
+            name="favicon"
+            accept="image/png,image/x-icon,image/svg+xml,image/jpeg"
+            onChange={(e) => {
+              const file = e.target.files?.[0];
+              if (file) setFaviconPreview(URL.createObjectURL(file));
+            }}
+            className="mt-1 block w-full text-sm text-zinc-600"
+          />
+        </label>
+        {faviconPreview && (
+          <div className="flex items-center gap-2">
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img src={faviconPreview} alt="Favicon" className="h-8 w-8 rounded bg-zinc-900 object-contain p-1" />
+            <span className="text-xs text-zinc-400">Recomendado: imagen cuadrada (ej. 512×512px)</span>
+          </div>
         )}
       </Card>
 
