@@ -38,8 +38,12 @@ export async function GET(_req: Request, { params }: { params: Promise<{ id: str
   }
 
   // Las imágenes están en un bucket privado — las bajamos y convertimos a
-  // data URI para poder incrustarlas directo en el PDF.
-  const images: { dataUri: string; caption: string }[] = [];
+  // data URI para poder incrustarlas directo en el PDF. El primer mockup y
+  // el primer logo del cliente se destacan en la portada; el resto (si hay
+  // más de uno de cada tipo, o paleta/otros) va a la grilla de la página 2.
+  const mockupImages: { dataUri: string; caption: string }[] = [];
+  const logoImages: { dataUri: string; caption: string }[] = [];
+  const otherImages: { dataUri: string; caption: string }[] = [];
   const nonImageFiles: { fileName: string; caption: string }[] = [];
 
   for (const resource of resources ?? []) {
@@ -48,12 +52,18 @@ export async function GET(_req: Request, { params }: { params: Promise<{ id: str
     if (mime) {
       const dataUri = await fetchPrivateFileAsDataUri("order-resources", resource.file_url, mime);
       if (dataUri) {
-        images.push({ dataUri, caption });
+        if (resource.resource_type === "mockup") mockupImages.push({ dataUri, caption });
+        else if (resource.resource_type === "logo") logoImages.push({ dataUri, caption });
+        else otherImages.push({ dataUri, caption });
         continue;
       }
     }
     nonImageFiles.push({ fileName: resource.file_name ?? resource.file_url, caption });
   }
+
+  const featuredMockupDataUri = mockupImages[0]?.dataUri ?? null;
+  const clientLogoDataUri = logoImages[0]?.dataUri ?? null;
+  const images = [...mockupImages.slice(1), ...logoImages.slice(1), ...otherImages];
 
   const buffer = await renderToBuffer(
     OrderReportDocument({
@@ -63,6 +73,8 @@ export async function GET(_req: Request, { params }: { params: Promise<{ id: str
         address: settings?.address ?? null,
         phone: settings?.whatsapp_number ?? null,
         email: settings?.contact_email ?? null,
+        primaryColor: settings?.primary_color ?? "#0a0a0a",
+        secondaryColor: settings?.secondary_color ?? "#dc2626",
       },
       order: {
         orderNumber: order.order_number,
@@ -73,6 +85,7 @@ export async function GET(_req: Request, { params }: { params: Promise<{ id: str
         contactPhone: order.contact_phone,
         contactEmail: order.contact_email,
         generalNotes: order.general_notes,
+        estimatedDeliveryDate: order.estimated_delivery_date,
       },
       details: details
         ? {
@@ -89,6 +102,8 @@ export async function GET(_req: Request, { params }: { params: Promise<{ id: str
         individualNumber: item.individual_number,
         quantity: item.quantity,
       })),
+      clientLogoDataUri,
+      featuredMockupDataUri,
       images,
       nonImageFiles,
     })

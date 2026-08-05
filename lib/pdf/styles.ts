@@ -33,6 +33,11 @@ export const pdfStyles = StyleSheet.create({
     maxHeight: 50,
     objectFit: "contain",
   },
+  clubLogo: {
+    width: 60,
+    maxHeight: 46,
+    objectFit: "contain",
+  },
   businessName: {
     fontSize: 16,
     fontWeight: 700,
@@ -97,6 +102,71 @@ export const pdfStyles = StyleSheet.create({
   },
   tableCell: {
     flex: 1,
+  },
+  // --- Ficha técnica: cover page con identidad de marca ---
+  statsRow: {
+    flexDirection: "row",
+    gap: 8,
+    marginBottom: 18,
+  },
+  statBadge: {
+    flex: 1,
+    borderRadius: 6,
+    paddingHorizontal: 10,
+    paddingVertical: 8,
+  },
+  statLabel: {
+    fontSize: 6.5,
+    textTransform: "uppercase",
+    letterSpacing: 0.5,
+    marginBottom: 3,
+  },
+  statValue: {
+    fontSize: 12,
+    fontWeight: 700,
+  },
+  coverGrid: {
+    flexDirection: "row",
+    gap: 16,
+    marginBottom: 4,
+  },
+  coverCol: {
+    flex: 1,
+  },
+  mockupBox: {
+    width: "100%",
+    height: 168,
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: "#e4e4e7",
+    marginBottom: 6,
+  },
+  mockupImage: {
+    width: "100%",
+    height: "100%",
+    objectFit: "cover",
+    borderRadius: 8,
+  },
+  mockupCaption: {
+    fontSize: 7,
+    color: "#71717a",
+    textAlign: "center",
+    marginBottom: 12,
+  },
+  mockupPlaceholder: {
+    width: "100%",
+    height: 168,
+    borderRadius: 8,
+    borderWidth: 1,
+    borderStyle: "dashed",
+    borderColor: "#d4d4d8",
+    alignItems: "center",
+    justifyContent: "center",
+    marginBottom: 12,
+  },
+  mockupPlaceholderText: {
+    fontSize: 8,
+    color: "#a1a1aa",
   },
   imageGrid: {
     flexDirection: "row",
