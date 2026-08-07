@@ -96,9 +96,11 @@ body {
 }
 
 .glass-modal {
-  background: rgba(255, 255, 255, 0.72);
-  backdrop-filter: blur(120px) saturate(240%) brightness(1.06);
-  -webkit-backdrop-filter: blur(120px) saturate(240%) brightness(1.06);
+  /* Opaco a propósito (no como las demás cards "glass") — con el modal
+     encima de contenido con texto, dejar traslucido el fondo generaba
+     confusión visual con las letras de atrás, incluso con blur fuerte
+     detrás del overlay. */
+  background: #ffffff;
   border: 1px solid rgba(255, 255, 255, 0.9);
   box-shadow:
     inset 0 1.5px 0 rgba(255, 255, 255, 1),
