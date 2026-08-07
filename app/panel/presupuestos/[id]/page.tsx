@@ -6,6 +6,7 @@ import { PageHeader } from "../../../components/ui/PageHeader";
 import { Card } from "../../../components/ui/Card";
 import { Button } from "../../../components/ui/Button";
 import { QuoteDetail } from "./QuoteDetail";
+import { QuoteItemsManager } from "./QuoteItemsManager";
 
 export default async function QuoteDetailPage({
   params,
@@ -15,11 +16,10 @@ export default async function QuoteDetailPage({
   const { id } = await params;
   const supabase = await createClient();
 
-  const { data: quote } = await supabase
-    .from("quotes")
-    .select("*, clients(name)")
-    .eq("id", id)
-    .single();
+  const [{ data: quote }, { data: items }] = await Promise.all([
+    supabase.from("quotes").select("*, clients(name)").eq("id", id).single(),
+    supabase.from("quote_items").select("*").eq("quote_id", id).order("sort_order", { ascending: true }),
+  ]);
 
   if (!quote) notFound();
 
@@ -41,6 +41,8 @@ export default async function QuoteDetailPage({
 
       <div className="flex max-w-2xl flex-col gap-6">
         <QuoteDetail quote={quote} />
+
+        <QuoteItemsManager quoteId={quote.id} items={items ?? []} />
 
         <Card>
           <h2 className="mb-2 text-sm font-semibold text-zinc-900">Generar pedido</h2>

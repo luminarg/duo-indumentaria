@@ -24,11 +24,12 @@ export async function createQuote(formData: FormData) {
   const fabric = String(formData.get("fabric") || "").trim() || null;
   const colorScheme = String(formData.get("color_scheme") || "").trim() || null;
   const patternNotes = String(formData.get("pattern_notes") || "").trim() || null;
-  const total = Number(formData.get("total") || 0);
   const depositPercent = Number(formData.get("deposit_percent") || 50);
   const validUntil = String(formData.get("valid_until") || "") || null;
   const notes = String(formData.get("notes") || "").trim() || null;
 
+  // El total arranca en 0 — se carga agregando artículos (precio unitario x
+  // cantidad) desde el detalle del presupuesto, no acá.
   const { data, error } = await supabase
     .from("quotes")
     .insert({
@@ -37,10 +38,10 @@ export async function createQuote(formData: FormData) {
       fabric,
       color_scheme: colorScheme,
       pattern_notes: patternNotes,
-      subtotal: total,
-      total,
+      subtotal: 0,
+      total: 0,
       deposit_percent: depositPercent,
-      deposit_amount: (total * depositPercent) / 100,
+      deposit_amount: 0,
       valid_until: validUntil,
       notes,
       created_by: user.id,
@@ -58,8 +59,12 @@ export async function updateQuote(quoteId: string, formData: FormData) {
   await requireTeamMember();
   const supabase = await createClient();
 
-  const total = Number(formData.get("total") || 0);
   const depositPercent = Number(formData.get("deposit_percent") || 50);
+
+  // El total ya no se carga a mano acá — sale de la suma de quote_items.
+  // Solo recalculamos la seña por si cambió el %.
+  const { data: current } = await supabase.from("quotes").select("total").eq("id", quoteId).single();
+  const total = Number(current?.total ?? 0);
 
   const { error } = await supabase
     .from("quotes")
@@ -68,8 +73,6 @@ export async function updateQuote(quoteId: string, formData: FormData) {
       fabric: String(formData.get("fabric") || "").trim() || null,
       color_scheme: String(formData.get("color_scheme") || "").trim() || null,
       pattern_notes: String(formData.get("pattern_notes") || "").trim() || null,
-      total,
-      subtotal: total,
       deposit_percent: depositPercent,
       deposit_amount: (total * depositPercent) / 100,
       valid_until: String(formData.get("valid_until") || "") || null,
@@ -79,6 +82,79 @@ export async function updateQuote(quoteId: string, formData: FormData) {
     .eq("id", quoteId);
 
   if (error) throw new Error("No se pudo guardar: " + error.message);
+  revalidatePath(`/panel/presupuestos/${quoteId}`);
+}
+
+// Recalcula total/subtotal/seña del presupuesto a partir de la suma de sus
+// artículos — se llama después de cualquier alta/edición/borrado de ítem.
+async function recalcQuoteTotals(quoteId: string) {
+  const supabase = await createClient();
+
+  const [{ data: items }, { data: quote }] = await Promise.all([
+    supabase.from("quote_items").select("unit_price, quantity").eq("quote_id", quoteId),
+    supabase.from("quotes").select("deposit_percent").eq("id", quoteId).single(),
+  ]);
+
+  const total = (items ?? []).reduce((sum, i) => sum + Number(i.unit_price) * Number(i.quantity), 0);
+  const depositPercent = Number(quote?.deposit_percent ?? 50);
+
+  await supabase
+    .from("quotes")
+    .update({ total, subtotal: total, deposit_amount: (total * depositPercent) / 100 })
+    .eq("id", quoteId);
+}
+
+export async function createQuoteItem(quoteId: string, formData: FormData) {
+  await requireTeamMember();
+  const supabase = await createClient();
+
+  const description = String(formData.get("description") || "").trim();
+  if (!description) throw new Error("Falta la descripción del artículo");
+  const unitPrice = Number(formData.get("unit_price") || 0);
+  const quantity = Number(formData.get("quantity") || 1);
+
+  const { data: existing } = await supabase.from("quote_items").select("id").eq("quote_id", quoteId);
+
+  const { error } = await supabase.from("quote_items").insert({
+    quote_id: quoteId,
+    description,
+    unit_price: unitPrice,
+    quantity,
+    sort_order: existing?.length ?? 0,
+  });
+  if (error) throw new Error("No se pudo agregar el artículo: " + error.message);
+
+  await recalcQuoteTotals(quoteId);
+  revalidatePath(`/panel/presupuestos/${quoteId}`);
+}
+
+export async function updateQuoteItem(itemId: string, quoteId: string, formData: FormData) {
+  await requireTeamMember();
+  const supabase = await createClient();
+
+  const description = String(formData.get("description") || "").trim();
+  if (!description) throw new Error("Falta la descripción del artículo");
+  const unitPrice = Number(formData.get("unit_price") || 0);
+  const quantity = Number(formData.get("quantity") || 1);
+
+  const { error } = await supabase
+    .from("quote_items")
+    .update({ description, unit_price: unitPrice, quantity })
+    .eq("id", itemId);
+  if (error) throw new Error("No se pudo guardar el artículo: " + error.message);
+
+  await recalcQuoteTotals(quoteId);
+  revalidatePath(`/panel/presupuestos/${quoteId}`);
+}
+
+export async function deleteQuoteItem(itemId: string, quoteId: string) {
+  await requireTeamMember();
+  const supabase = await createClient();
+
+  const { error } = await supabase.from("quote_items").delete().eq("id", itemId);
+  if (error) throw new Error("No se pudo borrar el artículo: " + error.message);
+
+  await recalcQuoteTotals(quoteId);
   revalidatePath(`/panel/presupuestos/${quoteId}`);
 }
 

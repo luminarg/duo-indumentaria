@@ -1,6 +1,7 @@
 import { Document, Page, Text, View } from "@react-pdf/renderer";
 import { pdfStyles } from "./styles";
 import { BrandHeader } from "./BrandHeader";
+import { getReadableForeground } from "../color";
 
 type QuotePdfProps = {
   business: {
@@ -11,6 +12,8 @@ type QuotePdfProps = {
     email: string | null;
     headerText: string | null;
     footerText: string | null;
+    primaryColor: string;
+    secondaryColor: string;
   };
   quote: {
     quoteNumber: string;
@@ -25,6 +28,7 @@ type QuotePdfProps = {
     depositAmount: number;
     notes: string | null;
   };
+  items: { description: string; unitPrice: number; quantity: number }[];
   client: {
     name: string;
     contactName: string | null;
@@ -42,13 +46,20 @@ function formatDate(iso: string) {
   return new Date(iso).toLocaleDateString("es-AR");
 }
 
-export function QuotePdfDocument({ business, quote, client }: QuotePdfProps) {
+export function QuotePdfDocument({ business, quote, items, client }: QuotePdfProps) {
   const contactLine = [business.address, business.phone, business.email].filter(Boolean).join(" · ");
+  const accent = business.secondaryColor || "#18181b";
+  const accentText = getReadableForeground(accent);
 
   return (
     <Document title={`Presupuesto ${quote.quoteNumber}`}>
       <Page size="A4" style={pdfStyles.page}>
-        <BrandHeader businessName={business.name} logoUrl={business.logoUrl} contactLine={contactLine} />
+        <BrandHeader
+          businessName={business.name}
+          logoUrl={business.logoUrl}
+          contactLine={contactLine}
+          accentColor={business.primaryColor}
+        />
 
         <Text style={pdfStyles.title}>Presupuesto {quote.quoteNumber}</Text>
         <Text style={pdfStyles.subtitle}>
@@ -85,43 +96,66 @@ export function QuotePdfDocument({ business, quote, client }: QuotePdfProps) {
           )}
         </View>
 
-        <View style={pdfStyles.section}>
-          <Text style={pdfStyles.sectionTitle}>Detalle</Text>
-          {quote.itemsDescription && (
-            <View style={pdfStyles.row}>
-              <Text style={pdfStyles.label}>Solicitado</Text>
-              <Text style={pdfStyles.value}>{quote.itemsDescription}</Text>
+        {(quote.itemsDescription || quote.fabric || quote.colorScheme || quote.patternNotes) && (
+          <View style={pdfStyles.section}>
+            <Text style={pdfStyles.sectionTitle}>Detalle</Text>
+            {quote.itemsDescription && (
+              <View style={pdfStyles.row}>
+                <Text style={pdfStyles.label}>Solicitado</Text>
+                <Text style={pdfStyles.value}>{quote.itemsDescription}</Text>
+              </View>
+            )}
+            {quote.fabric && (
+              <View style={pdfStyles.row}>
+                <Text style={pdfStyles.label}>Tela</Text>
+                <Text style={pdfStyles.value}>{quote.fabric}</Text>
+              </View>
+            )}
+            {quote.colorScheme && (
+              <View style={pdfStyles.row}>
+                <Text style={pdfStyles.label}>Color / diseño</Text>
+                <Text style={pdfStyles.value}>{quote.colorScheme}</Text>
+              </View>
+            )}
+            {quote.patternNotes && (
+              <View style={pdfStyles.row}>
+                <Text style={pdfStyles.label}>Moldería</Text>
+                <Text style={pdfStyles.value}>{quote.patternNotes}</Text>
+              </View>
+            )}
+          </View>
+        )}
+
+        {items.length > 0 && (
+          <View style={pdfStyles.section}>
+            <Text style={pdfStyles.sectionTitle}>Artículos</Text>
+            <View style={pdfStyles.table}>
+              <View style={[pdfStyles.tableHeaderRow, { backgroundColor: accent, borderBottomWidth: 0, borderRadius: 4 }]}>
+                <Text style={[pdfStyles.tableCell, { color: accentText, flex: 3 }]}>Descripción</Text>
+                <Text style={[pdfStyles.tableCell, { color: accentText }]}>Precio unit.</Text>
+                <Text style={[pdfStyles.tableCell, { color: accentText }]}>Cant.</Text>
+                <Text style={[pdfStyles.tableCell, { color: accentText }]}>Subtotal</Text>
+              </View>
+              {items.map((item, i) => (
+                <View key={i} style={pdfStyles.tableRow}>
+                  <Text style={[pdfStyles.tableCell, { flex: 3 }]}>{item.description}</Text>
+                  <Text style={pdfStyles.tableCell}>{formatMoney(item.unitPrice)}</Text>
+                  <Text style={pdfStyles.tableCell}>{item.quantity}</Text>
+                  <Text style={pdfStyles.tableCell}>{formatMoney(item.unitPrice * item.quantity)}</Text>
+                </View>
+              ))}
             </View>
-          )}
-          {quote.fabric && (
-            <View style={pdfStyles.row}>
-              <Text style={pdfStyles.label}>Tela</Text>
-              <Text style={pdfStyles.value}>{quote.fabric}</Text>
-            </View>
-          )}
-          {quote.colorScheme && (
-            <View style={pdfStyles.row}>
-              <Text style={pdfStyles.label}>Color / diseño</Text>
-              <Text style={pdfStyles.value}>{quote.colorScheme}</Text>
-            </View>
-          )}
-          {quote.patternNotes && (
-            <View style={pdfStyles.row}>
-              <Text style={pdfStyles.label}>Moldería</Text>
-              <Text style={pdfStyles.value}>{quote.patternNotes}</Text>
-            </View>
-          )}
-        </View>
+          </View>
+        )}
 
         <View style={pdfStyles.section}>
-          <Text style={pdfStyles.sectionTitle}>Monto</Text>
           <View style={pdfStyles.row}>
             <Text style={pdfStyles.label}>Total</Text>
-            <Text style={pdfStyles.value}>{formatMoney(quote.total)}</Text>
+            <Text style={[pdfStyles.value, { fontWeight: 700 }]}>{formatMoney(quote.total)}</Text>
           </View>
           <View style={pdfStyles.row}>
             <Text style={pdfStyles.label}>Seña ({quote.depositPercent}%)</Text>
-            <Text style={pdfStyles.value}>{formatMoney(quote.depositAmount)}</Text>
+            <Text style={[pdfStyles.value, { fontWeight: 700 }]}>{formatMoney(quote.depositAmount)}</Text>
           </View>
         </View>
 

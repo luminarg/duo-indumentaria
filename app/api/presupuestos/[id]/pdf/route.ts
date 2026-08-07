@@ -16,9 +16,10 @@ export async function GET(_req: Request, { params }: { params: Promise<{ id: str
     return NextResponse.json({ error: "No autenticado" }, { status: 401 });
   }
 
-  const [{ data: quote }, { data: settings }] = await Promise.all([
+  const [{ data: quote }, { data: settings }, { data: items }] = await Promise.all([
     supabase.from("quotes").select("*, clients(name, contact_name, contact_role, phone, email)").eq("id", id).single(),
     supabase.from("business_settings").select("*").eq("id", 1).single(),
+    supabase.from("quote_items").select("*").eq("quote_id", id).order("sort_order", { ascending: true }),
   ]);
 
   if (!quote) {
@@ -43,6 +44,8 @@ export async function GET(_req: Request, { params }: { params: Promise<{ id: str
         email: settings?.contact_email ?? null,
         headerText: settings?.quote_header_text ?? null,
         footerText: settings?.quote_footer_text ?? null,
+        primaryColor: settings?.primary_color ?? "#0a0a0a",
+        secondaryColor: settings?.secondary_color ?? "#dc2626",
       },
       quote: {
         quoteNumber: quote.quote_number,
@@ -57,6 +60,11 @@ export async function GET(_req: Request, { params }: { params: Promise<{ id: str
         depositAmount: Number(quote.deposit_amount),
         notes: quote.notes,
       },
+      items: (items ?? []).map((item) => ({
+        description: item.description,
+        unitPrice: Number(item.unit_price),
+        quantity: item.quantity,
+      })),
       client: {
         name: client?.name ?? "—",
         contactName: client?.contact_name ?? null,

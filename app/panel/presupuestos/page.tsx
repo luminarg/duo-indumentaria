@@ -44,10 +44,13 @@ export default async function PresupuestosPage() {
             />
             <Input name="fabric" placeholder="Tela" />
             <Input name="color_scheme" placeholder="Color / diseño" />
-            <Input type="number" name="total" placeholder="Monto total estimado" step="0.01" />
             <Input type="number" name="deposit_percent" placeholder="% de seña" defaultValue={50} />
             <Input type="date" name="valid_until" />
-            <Input name="notes" placeholder="Notas (opcional)" />
+            <Input name="notes" placeholder="Notas (opcional)" className="sm:col-span-2" />
+            <p className="text-xs text-zinc-500 sm:col-span-2">
+              Los artículos (precio unitario y cantidad) se cargan después, desde el detalle del
+              presupuesto.
+            </p>
             <Button type="submit" className="self-start sm:col-span-2">
               Crear presupuesto
             </Button>

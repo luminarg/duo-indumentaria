@@ -13,11 +13,16 @@ type Quote = {
   color_scheme: string | null;
   pattern_notes: string | null;
   total: number;
+  deposit_amount: number;
   deposit_percent: number;
   valid_until: string | null;
   notes: string | null;
   status: string;
 };
+
+function formatMoney(value: number) {
+  return `$${value.toLocaleString("es-AR", { minimumFractionDigits: 2 })}`;
+}
 
 const STATUSES = ["borrador", "enviado", "aprobado", "vencido", "rechazado"];
 
@@ -61,8 +66,19 @@ export function QuoteDetail({ quote }: { quote: Quote }) {
           defaultValue={quote.pattern_notes ?? ""}
           className="sm:col-span-2"
         />
-        <Input label="Monto total" type="number" step="0.01" name="total" defaultValue={quote.total} />
+        <div className="flex flex-col gap-1 text-xs font-medium text-zinc-500">
+          Monto total (según artículos)
+          <div className="mt-1 rounded-md border border-zinc-200 bg-zinc-50 px-3 py-2 text-sm font-semibold text-zinc-900">
+            {formatMoney(quote.total)}
+          </div>
+        </div>
         <Input label="% de seña" type="number" name="deposit_percent" defaultValue={quote.deposit_percent} />
+        <div className="flex flex-col gap-1 text-xs font-medium text-zinc-500 sm:col-span-2">
+          Seña calculada
+          <div className="mt-1 rounded-md border border-zinc-200 bg-zinc-50 px-3 py-2 text-sm font-semibold text-zinc-900">
+            {formatMoney(quote.deposit_amount)}
+          </div>
+        </div>
         <Input
           label="Válido hasta"
           type="date"
