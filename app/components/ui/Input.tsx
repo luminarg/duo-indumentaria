@@ -1,12 +1,21 @@
 import { cn } from "@/lib/cn";
 import type { InputHTMLAttributes, TextareaHTMLAttributes, SelectHTMLAttributes, ReactNode } from "react";
 
-function FieldWrapper({ label, children }: { label?: string; children: ReactNode }) {
+function FieldWrapper({
+  label,
+  hint,
+  children,
+}: {
+  label?: string;
+  hint?: string;
+  children: ReactNode;
+}) {
   if (!label) return <>{children}</>;
   return (
     <label className="flex flex-col gap-1 text-xs font-medium text-zinc-500">
       {label}
       {children}
+      {hint && <span className="text-[11px] font-normal text-zinc-400">{hint}</span>}
     </label>
   );
 }
@@ -16,11 +25,12 @@ const fieldClasses =
 
 export function Input({
   label,
+  hint,
   className,
   ...props
-}: InputHTMLAttributes<HTMLInputElement> & { label?: string }) {
+}: InputHTMLAttributes<HTMLInputElement> & { label?: string; hint?: string }) {
   return (
-    <FieldWrapper label={label}>
+    <FieldWrapper label={label} hint={hint}>
       <input className={cn(fieldClasses, "mt-1", className)} {...props} />
     </FieldWrapper>
   );
@@ -28,11 +38,12 @@ export function Input({
 
 export function Textarea({
   label,
+  hint,
   className,
   ...props
-}: TextareaHTMLAttributes<HTMLTextAreaElement> & { label?: string }) {
+}: TextareaHTMLAttributes<HTMLTextAreaElement> & { label?: string; hint?: string }) {
   return (
-    <FieldWrapper label={label}>
+    <FieldWrapper label={label} hint={hint}>
       <textarea className={cn(fieldClasses, "mt-1", className)} {...props} />
     </FieldWrapper>
   );
@@ -40,12 +51,13 @@ export function Textarea({
 
 export function Select({
   label,
+  hint,
   className,
   children,
   ...props
-}: SelectHTMLAttributes<HTMLSelectElement> & { label?: string }) {
+}: SelectHTMLAttributes<HTMLSelectElement> & { label?: string; hint?: string }) {
   return (
-    <FieldWrapper label={label}>
+    <FieldWrapper label={label} hint={hint}>
       <select className={cn(fieldClasses, "mt-1", className)} {...props}>
         {children}
       </select>

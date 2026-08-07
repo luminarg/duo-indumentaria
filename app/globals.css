@@ -110,12 +110,13 @@ body {
   inset: 0;
   z-index: 50;
   display: flex;
-  align-items: center;
+  /* El alineado (centrado en desktop, "docked" abajo en mobile) lo define
+     el componente con clases de Tailwind (items-end / sm:items-center),
+     no esta clase — así no hay que pelear especificidad. */
   justify-content: center;
   background: rgba(0, 0, 0, 0.35);
   backdrop-filter: blur(12px);
   -webkit-backdrop-filter: blur(12px);
-  padding: 1rem;
 }
 
 /* Botón glass, con el shine diagonal característico. Se usa junto con las

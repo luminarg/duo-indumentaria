@@ -13,46 +13,80 @@ async function requireTeamMember() {
   return user;
 }
 
-export async function createQuote(formData: FormData) {
+// Crea el presupuesto y sus artículos en un solo paso, desde el modal de
+// "Nuevo presupuesto" — el cliente puede ser uno ya cargado o uno nuevo
+// (se crea acá mismo, sin salir del modal). `items` viaja como primer
+// argumento "bindeado" al form action (así el modal puede armar la lista
+// en el cliente sin depender de inputs ocultos serializados a mano).
+export async function createQuoteWithItems(
+  items: { description: string; unitPrice: number; quantity: number }[],
+  formData: FormData
+) {
   const user = await requireTeamMember();
   const supabase = await createClient();
 
-  const clientId = String(formData.get("client_id") || "");
-  if (!clientId) throw new Error("Elegí un cliente");
+  let clientId = String(formData.get("client_id") || "");
+  const newClientName = String(formData.get("new_client_name") || "").trim();
 
-  const itemsDescription = String(formData.get("items_description") || "").trim() || null;
-  const fabric = String(formData.get("fabric") || "").trim() || null;
-  const colorScheme = String(formData.get("color_scheme") || "").trim() || null;
-  const patternNotes = String(formData.get("pattern_notes") || "").trim() || null;
+  if (!clientId && newClientName) {
+    const { data: newClientRow, error: clientError } = await supabase
+      .from("clients")
+      .insert({
+        name: newClientName,
+        contact_name: String(formData.get("new_client_contact") || "").trim() || null,
+        phone: String(formData.get("new_client_phone") || "").trim() || null,
+        email: String(formData.get("new_client_email") || "").trim() || null,
+      })
+      .select("id")
+      .single();
+    if (clientError || !newClientRow) {
+      throw new Error("No se pudo crear el cliente: " + (clientError?.message ?? ""));
+    }
+    clientId = newClientRow.id;
+  }
+
+  if (!clientId) throw new Error("Elegí un cliente o cargá uno nuevo");
+
   const depositPercent = Number(formData.get("deposit_percent") || 50);
-  const validUntil = String(formData.get("valid_until") || "") || null;
-  const notes = String(formData.get("notes") || "").trim() || null;
+  const total = items.reduce((sum, i) => sum + i.unitPrice * i.quantity, 0);
 
-  // El total arranca en 0 — se carga agregando artículos (precio unitario x
-  // cantidad) desde el detalle del presupuesto, no acá.
-  const { data, error } = await supabase
+  const { data: quote, error: quoteError } = await supabase
     .from("quotes")
     .insert({
       client_id: clientId,
-      items_description: itemsDescription,
-      fabric,
-      color_scheme: colorScheme,
-      pattern_notes: patternNotes,
-      subtotal: 0,
-      total: 0,
+      items_description: String(formData.get("items_description") || "").trim() || null,
+      fabric: String(formData.get("fabric") || "").trim() || null,
+      color_scheme: String(formData.get("color_scheme") || "").trim() || null,
+      subtotal: total,
+      total,
       deposit_percent: depositPercent,
-      deposit_amount: 0,
-      valid_until: validUntil,
-      notes,
+      deposit_amount: (total * depositPercent) / 100,
+      valid_until: String(formData.get("valid_until") || "") || null,
+      notes: String(formData.get("notes") || "").trim() || null,
       created_by: user.id,
     })
     .select("id")
     .single();
 
-  if (error || !data) throw new Error("No se pudo crear el presupuesto: " + (error?.message ?? ""));
+  if (quoteError || !quote) throw new Error("No se pudo crear el presupuesto: " + (quoteError?.message ?? ""));
+
+  if (items.length > 0) {
+    const { error: itemsError } = await supabase.from("quote_items").insert(
+      items.map((item, i) => ({
+        quote_id: quote.id,
+        description: item.description,
+        unit_price: item.unitPrice,
+        quantity: item.quantity,
+        sort_order: i,
+      }))
+    );
+    if (itemsError) {
+      throw new Error("El presupuesto se creó pero hubo un error al cargar los artículos: " + itemsError.message);
+    }
+  }
 
   revalidatePath("/panel/presupuestos");
-  redirect(`/panel/presupuestos/${data.id}`);
+  redirect(`/panel/presupuestos/${quote.id}`);
 }
 
 export async function updateQuote(quoteId: string, formData: FormData) {
