@@ -13,6 +13,40 @@ async function requireTeamMember() {
   return user;
 }
 
+// Guarda un cliente nuevo en la base al toque, desde el modal de "Nuevo
+// presupuesto" — a diferencia de `createCustomer` (en clientes/actions.ts)
+// esta NO redirige a ningún lado, para no sacar al usuario del modal. Se
+// llama directo (no como form action) y devuelve el cliente creado para
+// que el modal lo pueda seleccionar automáticamente.
+export async function createClientInline(input: {
+  name: string;
+  contactName: string | null;
+  phone: string | null;
+  email: string | null;
+}) {
+  await requireTeamMember();
+  const supabase = await createClient();
+
+  const name = input.name.trim();
+  if (!name) throw new Error("Falta el nombre del cliente");
+
+  const { data, error } = await supabase
+    .from("clients")
+    .insert({
+      name,
+      contact_name: input.contactName?.trim() || null,
+      phone: input.phone?.trim() || null,
+      email: input.email?.trim() || null,
+    })
+    .select("id, name")
+    .single();
+
+  if (error || !data) throw new Error("No se pudo guardar el cliente: " + (error?.message ?? ""));
+
+  revalidatePath("/panel/clientes");
+  return data;
+}
+
 // Crea el presupuesto y sus artículos en un solo paso, desde el modal de
 // "Nuevo presupuesto" — el cliente puede ser uno ya cargado o uno nuevo
 // (se crea acá mismo, sin salir del modal). `items` viaja como primer

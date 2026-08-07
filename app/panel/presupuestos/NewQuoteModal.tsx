@@ -1,8 +1,8 @@
 "use client";
 
-import { useState } from "react";
-import { Plus, Trash2, UserPlus, Users } from "lucide-react";
-import { createQuoteWithItems } from "./actions";
+import { useState, useTransition } from "react";
+import { Check, Plus, Trash2, UserPlus, Users } from "lucide-react";
+import { createQuoteWithItems, createClientInline } from "./actions";
 import { Modal } from "../../components/ui/Modal";
 import { Input, Textarea, Select } from "../../components/ui/Input";
 import { Button } from "../../components/ui/Button";
@@ -20,6 +20,9 @@ function formatMoney(value: number) {
   return `$${value.toLocaleString("es-AR", { minimumFractionDigits: 2 })}`;
 }
 
+const cellInputClass =
+  "w-full rounded border border-transparent bg-transparent px-1 py-0.5 focus:border-zinc-300 focus:bg-white focus:outline-none";
+
 function ItemsCart({ items, onChange }: { items: CartItem[]; onChange: (items: CartItem[]) => void }) {
   const [description, setDescription] = useState("");
   const [unitPrice, setUnitPrice] = useState(0);
@@ -33,6 +36,10 @@ function ItemsCart({ items, onChange }: { items: CartItem[]; onChange: (items: C
     setQuantity(1);
   }
 
+  function updateItem(tempId: string, patch: Partial<CartItem>) {
+    onChange(items.map((i) => (i.tempId === tempId ? { ...i, ...patch } : i)));
+  }
+
   const total = items.reduce((sum, i) => sum + i.unitPrice * i.quantity, 0);
 
   return (
@@ -41,7 +48,7 @@ function ItemsCart({ items, onChange }: { items: CartItem[]; onChange: (items: C
         <span className="text-xs font-medium text-zinc-500">Artículos</span>
         <p className="text-[11px] text-zinc-400">
           Cada artículo con su precio unitario y cantidad — el total del presupuesto sale de la suma de
-          todos. Podés agregar más después.
+          todos. Podés corregir cantidad o precio tocando el valor en la tabla.
         </p>
       </div>
 
@@ -51,17 +58,40 @@ function ItemsCart({ items, onChange }: { items: CartItem[]; onChange: (items: C
             <thead>
               <tr className="border-b border-zinc-200 bg-zinc-50 text-xs text-zinc-500">
                 <th className="px-2.5 py-2 text-left font-medium">Descripción</th>
-                <th className="px-2 py-2 text-right font-medium">Cant.</th>
-                <th className="px-2 py-2 text-right font-medium">Subtotal</th>
-                <th className="w-8" />
+                <th className="w-14 px-1 py-2 text-right font-medium">Cant.</th>
+                <th className="w-20 px-1 py-2 text-right font-medium">Precio unit.</th>
+                <th className="w-20 px-2 py-2 text-right font-medium">Subtotal</th>
+                <th className="w-7" />
               </tr>
             </thead>
             <tbody>
               {items.map((item) => (
                 <tr key={item.tempId} className="border-b border-zinc-100 last:border-0">
-                  <td className="px-2.5 py-2 text-zinc-800">{item.description}</td>
-                  <td className="px-2 py-2 text-right text-zinc-600">{item.quantity}</td>
-                  <td className="px-2 py-2 text-right font-medium text-zinc-800">
+                  <td className="px-1.5 py-1">
+                    <input
+                      value={item.description}
+                      onChange={(e) => updateItem(item.tempId, { description: e.target.value })}
+                      className={cellInputClass + " text-zinc-800"}
+                    />
+                  </td>
+                  <td className="px-1 py-1">
+                    <input
+                      type="number"
+                      value={item.quantity}
+                      onChange={(e) => updateItem(item.tempId, { quantity: Number(e.target.value) || 0 })}
+                      className={cellInputClass + " text-right text-zinc-600"}
+                    />
+                  </td>
+                  <td className="px-1 py-1">
+                    <input
+                      type="number"
+                      step="0.01"
+                      value={item.unitPrice}
+                      onChange={(e) => updateItem(item.tempId, { unitPrice: Number(e.target.value) || 0 })}
+                      className={cellInputClass + " text-right text-zinc-600"}
+                    />
+                  </td>
+                  <td className="px-2 py-1 text-right font-medium text-zinc-800">
                     {formatMoney(item.unitPrice * item.quantity)}
                   </td>
                   <td className="px-1 text-center">
@@ -127,12 +157,26 @@ function ItemsCart({ items, onChange }: { items: CartItem[]; onChange: (items: C
   );
 }
 
-export function NewQuoteModal({ clients, open, onClose }: { clients: Client[]; open: boolean; onClose: () => void }) {
+export function NewQuoteModal({
+  clients,
+  open,
+  onClose,
+}: {
+  clients: Client[];
+  open: boolean;
+  onClose: () => void;
+}) {
+  const [availableClients, setAvailableClients] = useState(clients);
   const [isNewClient, setIsNewClient] = useState(clients.length === 0);
   const [selectedClientId, setSelectedClientId] = useState("");
   const [newClientName, setNewClientName] = useState("");
+  const [newClientContact, setNewClientContact] = useState("");
+  const [newClientPhone, setNewClientPhone] = useState("");
+  const [newClientEmail, setNewClientEmail] = useState("");
+  const [savedClientId, setSavedClientId] = useState<string | null>(null);
   const [items, setItems] = useState<CartItem[]>([]);
   const [error, setError] = useState<string | null>(null);
+  const [isSavingClient, startSavingClient] = useTransition();
 
   function handleSubmit(e: React.FormEvent<HTMLFormElement>) {
     setError(null);
@@ -144,6 +188,30 @@ export function NewQuoteModal({ clients, open, onClose }: { clients: Client[]; o
     }
     // No hacemos preventDefault: dejamos que el form action nativo se
     // dispare (así el redirect del server action funciona bien).
+  }
+
+  function handleSaveClient() {
+    setError(null);
+    if (!newClientName.trim()) {
+      setError("Ingresá el nombre del cliente para guardarlo");
+      return;
+    }
+    startSavingClient(async () => {
+      try {
+        const created = await createClientInline({
+          name: newClientName,
+          contactName: newClientContact || null,
+          phone: newClientPhone || null,
+          email: newClientEmail || null,
+        });
+        setAvailableClients((prev) => [...prev, created]);
+        setSavedClientId(created.id);
+        setSelectedClientId(created.id);
+        setIsNewClient(false);
+      } catch (err) {
+        setError(err instanceof Error ? err.message : "Error al guardar el cliente");
+      }
+    });
   }
 
   return (
@@ -205,25 +273,60 @@ export function NewQuoteModal({ clients, open, onClose }: { clients: Client[]; o
                 value={newClientName}
                 onChange={(e) => setNewClientName(e.target.value)}
               />
-              <Input name="new_client_contact" placeholder="Nombre de contacto (opcional)" />
+              <Input
+                name="new_client_contact"
+                placeholder="Nombre de contacto (opcional)"
+                value={newClientContact}
+                onChange={(e) => setNewClientContact(e.target.value)}
+              />
               <div className="grid grid-cols-2 gap-2">
-                <Input name="new_client_phone" placeholder="Teléfono (opcional)" />
-                <Input name="new_client_email" placeholder="Email (opcional)" />
+                <Input
+                  name="new_client_phone"
+                  placeholder="Teléfono (opcional)"
+                  value={newClientPhone}
+                  onChange={(e) => setNewClientPhone(e.target.value)}
+                />
+                <Input
+                  name="new_client_email"
+                  placeholder="Email (opcional)"
+                  value={newClientEmail}
+                  onChange={(e) => setNewClientEmail(e.target.value)}
+                />
               </div>
+              <Button
+                type="button"
+                variant="secondary"
+                size="sm"
+                disabled={isSavingClient}
+                onClick={handleSaveClient}
+                className="self-start"
+              >
+                {isSavingClient ? "Guardando..." : "Guardar cliente"}
+              </Button>
+              <p className="text-[11px] text-zinc-400">
+                Lo guarda en la base ahora mismo, así queda cargado aunque no termines el presupuesto.
+              </p>
             </div>
           ) : (
-            <Select
-              name="client_id"
-              value={selectedClientId}
-              onChange={(e) => setSelectedClientId(e.target.value)}
-            >
-              <option value="">Elegí un cliente...</option>
-              {clients.map((c) => (
-                <option key={c.id} value={c.id}>
-                  {c.name}
-                </option>
-              ))}
-            </Select>
+            <>
+              {savedClientId === selectedClientId && selectedClientId && (
+                <div className="flex items-center gap-1.5 text-[11px] font-medium text-green-700">
+                  <Check className="h-3.5 w-3.5" /> Cliente guardado
+                </div>
+              )}
+              <Select
+                name="client_id"
+                value={selectedClientId}
+                onChange={(e) => setSelectedClientId(e.target.value)}
+              >
+                <option value="">Elegí un cliente...</option>
+                {availableClients.map((c) => (
+                  <option key={c.id} value={c.id}>
+                    {c.name}
+                  </option>
+                ))}
+              </Select>
+            </>
           )}
         </div>
 
