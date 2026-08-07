@@ -114,9 +114,9 @@ body {
      el componente con clases de Tailwind (items-end / sm:items-center),
      no esta clase — así no hay que pelear especificidad. */
   justify-content: center;
-  background: rgba(0, 0, 0, 0.35);
-  backdrop-filter: blur(12px);
-  -webkit-backdrop-filter: blur(12px);
+  background: rgba(0, 0, 0, 0.55);
+  backdrop-filter: blur(32px) saturate(140%);
+  -webkit-backdrop-filter: blur(32px) saturate(140%);
 }
 
 /* Botón glass, con el shine diagonal característico. Se usa junto con las
