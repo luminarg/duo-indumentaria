@@ -6,7 +6,6 @@ import { createQuoteWithItems } from "./actions";
 import { Modal } from "../../components/ui/Modal";
 import { Input, Textarea, Select } from "../../components/ui/Input";
 import { Button } from "../../components/ui/Button";
-import { cn } from "@/lib/cn";
 
 type Client = { id: string; name: string };
 
@@ -37,40 +36,52 @@ function ItemsCart({ items, onChange }: { items: CartItem[]; onChange: (items: C
   const total = items.reduce((sum, i) => sum + i.unitPrice * i.quantity, 0);
 
   return (
-    <div className="flex flex-col gap-2 rounded-md border border-zinc-200 p-3">
-      <div className="flex flex-col gap-1">
+    <div className="flex flex-col gap-2">
+      <div>
         <span className="text-xs font-medium text-zinc-500">Artículos</span>
-        <span className="text-[11px] text-zinc-400">
+        <p className="text-[11px] text-zinc-400">
           Cada artículo con su precio unitario y cantidad — el total del presupuesto sale de la suma de
           todos. Podés agregar más después.
-        </span>
+        </p>
       </div>
 
       {items.length > 0 && (
-        <div className="flex flex-col gap-1.5">
-          {items.map((item) => (
-            <div key={item.tempId} className="flex items-center gap-2 rounded-md bg-zinc-50 px-2.5 py-1.5 text-sm">
-              <span className="flex-1 truncate text-zinc-800">{item.description}</span>
-              <span className="text-xs text-zinc-500">
-                {item.quantity} x {formatMoney(item.unitPrice)}
-              </span>
-              <span className="w-20 text-right text-xs font-medium text-zinc-700">
-                {formatMoney(item.unitPrice * item.quantity)}
-              </span>
-              <button
-                type="button"
-                onClick={() => onChange(items.filter((i) => i.tempId !== item.tempId))}
-                className="text-zinc-400 hover:text-red-600"
-                aria-label="Quitar artículo"
-              >
-                <Trash2 className="h-3.5 w-3.5" />
-              </button>
-            </div>
-          ))}
+        <div className="overflow-hidden rounded-md border border-zinc-200">
+          <table className="w-full text-sm">
+            <thead>
+              <tr className="border-b border-zinc-200 bg-zinc-50 text-xs text-zinc-500">
+                <th className="px-2.5 py-2 text-left font-medium">Descripción</th>
+                <th className="px-2 py-2 text-right font-medium">Cant.</th>
+                <th className="px-2 py-2 text-right font-medium">Subtotal</th>
+                <th className="w-8" />
+              </tr>
+            </thead>
+            <tbody>
+              {items.map((item) => (
+                <tr key={item.tempId} className="border-b border-zinc-100 last:border-0">
+                  <td className="px-2.5 py-2 text-zinc-800">{item.description}</td>
+                  <td className="px-2 py-2 text-right text-zinc-600">{item.quantity}</td>
+                  <td className="px-2 py-2 text-right font-medium text-zinc-800">
+                    {formatMoney(item.unitPrice * item.quantity)}
+                  </td>
+                  <td className="px-1 text-center">
+                    <button
+                      type="button"
+                      onClick={() => onChange(items.filter((i) => i.tempId !== item.tempId))}
+                      className="text-zinc-400 hover:text-red-600"
+                      aria-label="Quitar artículo"
+                    >
+                      <Trash2 className="h-3.5 w-3.5" />
+                    </button>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
         </div>
       )}
 
-      <div className="grid grid-cols-[1fr_5.5rem_4rem_auto] items-center gap-1.5 border-t border-zinc-100 pt-2">
+      <div className="grid grid-cols-[1fr_5.5rem_4rem_auto] items-center gap-1.5 rounded-md border border-dashed border-zinc-300 p-2">
         <input
           value={description}
           onChange={(e) => setDescription(e.target.value)}
@@ -102,9 +113,15 @@ function ItemsCart({ items, onChange }: { items: CartItem[]; onChange: (items: C
         </button>
       </div>
 
-      <div className="flex items-center justify-between border-t border-zinc-100 pt-2 text-sm">
-        <span className="text-zinc-500">Total</span>
-        <span className="font-semibold text-zinc-900">{formatMoney(total)}</span>
+      <div className="rounded-md bg-zinc-50 px-3 py-2.5 text-sm">
+        <div className="flex items-center justify-between text-zinc-500">
+          <span>Artículos ({items.length})</span>
+          <span>{formatMoney(total)}</span>
+        </div>
+        <div className="mt-1.5 flex items-center justify-between border-t border-zinc-200 pt-1.5 font-semibold text-zinc-900">
+          <span>Total</span>
+          <span>{formatMoney(total)}</span>
+        </div>
       </div>
     </div>
   );
@@ -130,8 +147,24 @@ export function NewQuoteModal({ clients, open, onClose }: { clients: Client[]; o
   }
 
   return (
-    <Modal open={open} onClose={onClose} title="Nuevo presupuesto">
+    <Modal
+      open={open}
+      onClose={onClose}
+      title="Nuevo presupuesto"
+      subtitle="Elegí el cliente y cargá los artículos"
+      footer={
+        <div className="flex items-center justify-between gap-3">
+          <Button type="button" variant="secondary" onClick={onClose}>
+            Cancelar
+          </Button>
+          <Button type="submit" form="new-quote-form">
+            Crear presupuesto
+          </Button>
+        </div>
+      }
+    >
       <form
+        id="new-quote-form"
         action={createQuoteWithItems.bind(
           null,
           items.map(({ description, unitPrice, quantity }) => ({ description, unitPrice, quantity }))
@@ -165,7 +198,7 @@ export function NewQuoteModal({ clients, open, onClose }: { clients: Client[]; o
           </span>
 
           {isNewClient ? (
-            <div className={cn("mt-1 flex flex-col gap-2 rounded-md border border-zinc-200 p-3")}>
+            <div className="mt-1 flex flex-col gap-2 rounded-md border border-zinc-200 p-3">
               <Input
                 name="new_client_name"
                 placeholder="Nombre del cliente / equipo *"
@@ -240,10 +273,6 @@ export function NewQuoteModal({ clients, open, onClose }: { clients: Client[]; o
           placeholder="Aclaraciones adicionales (opcional)"
           hint="Para vos o para el cliente — aparece en el PDF si lo completás."
         />
-
-        <Button type="submit" className="self-start">
-          Crear presupuesto
-        </Button>
       </form>
     </Modal>
   );
