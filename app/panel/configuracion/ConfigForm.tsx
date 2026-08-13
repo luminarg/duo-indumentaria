@@ -26,6 +26,10 @@ type Settings = {
   quote_header_text?: string | null;
   quote_footer_text?: string | null;
   quote_validity_days?: number;
+  seo_title?: string | null;
+  seo_description?: string | null;
+  seo_keywords?: string | null;
+  seo_og_image_url?: string | null;
 };
 
 type Slider = {
@@ -51,6 +55,7 @@ const TABS = [
   { key: "home", label: "Home" },
   { key: "contacto", label: "Contacto" },
   { key: "presupuestos", label: "Presupuestos" },
+  { key: "seo", label: "SEO" },
 ] as const;
 
 type TabKey = (typeof TABS)[number]["key"];
@@ -70,6 +75,9 @@ export function ConfigForm({
   const [error, setError] = useState<string | null>(null);
   const [logoPreview, setLogoPreview] = useState<string | null>(settings.logo_url);
   const [faviconPreview, setFaviconPreview] = useState<string | null>(settings.favicon_url);
+  const [ogPreview, setOgPreview] = useState<string | null>(settings.seo_og_image_url ?? null);
+  const [seoTitle, setSeoTitle] = useState(settings.seo_title ?? "");
+  const [seoDescription, setSeoDescription] = useState(settings.seo_description ?? "");
 
   function handleSubmit(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault();
@@ -251,6 +259,78 @@ export function ConfigForm({
               defaultValue={settings.quote_validity_days ?? 7}
               className="w-32"
             />
+          </Card>
+        </div>
+
+        <div className={cn("flex flex-col gap-6", tab !== "seo" && "hidden")}>
+          <Card className="flex flex-col gap-4">
+            <div>
+              <h2 className="text-sm font-semibold text-zinc-900">Posicionamiento en buscadores (SEO)</h2>
+              <p className="mt-1 text-xs text-zinc-500">
+                Esto es lo que Google y las redes sociales muestran cuando alguien busca o comparte tu sitio. No
+                hace falta tocar código: se guarda igual que el resto de esta pantalla.
+              </p>
+            </div>
+
+            <div>
+              <Input
+                label="Título para buscadores"
+                name="seo_title"
+                value={seoTitle}
+                onChange={(e) => setSeoTitle(e.target.value)}
+                placeholder={settings.business_name}
+                hint="Ej: 'Duo Indumentaria — Indumentaria deportiva a medida'. Ideal hasta 60 caracteres."
+              />
+              <p className={cn("mt-1 text-[11px]", seoTitle.length > 60 ? "text-amber-600" : "text-zinc-400")}>
+                {seoTitle.length}/60
+              </p>
+            </div>
+
+            <div>
+              <Textarea
+                label="Descripción para buscadores"
+                name="seo_description"
+                value={seoDescription}
+                onChange={(e) => setSeoDescription(e.target.value)}
+                placeholder="Indumentaria deportiva personalizada — pedidos, presupuestos y producción."
+                hint="Lo que aparece debajo del título en los resultados de Google. Ideal hasta 155 caracteres."
+              />
+              <p
+                className={cn("mt-1 text-[11px]", seoDescription.length > 155 ? "text-amber-600" : "text-zinc-400")}
+              >
+                {seoDescription.length}/155
+              </p>
+            </div>
+
+            <Input
+              label="Palabras clave (opcional)"
+              name="seo_keywords"
+              defaultValue={settings.seo_keywords ?? ""}
+              placeholder="indumentaria deportiva, camisetas personalizadas, equipos"
+              hint="Separadas por coma. Hoy pesan poco en el ranking de Google, pero no está de más."
+            />
+
+            <label className="flex flex-col gap-1 text-xs font-medium text-zinc-500">
+              Imagen para compartir en redes (WhatsApp, Facebook, Instagram)
+              <input
+                type="file"
+                name="seo_og_image"
+                accept="image/*"
+                onChange={(e) => {
+                  const file = e.target.files?.[0];
+                  if (file) setOgPreview(URL.createObjectURL(file));
+                }}
+                className="mt-1 block w-full text-sm text-zinc-600"
+              />
+            </label>
+            {ogPreview && (
+              // eslint-disable-next-line @next/next/no-img-element
+              <img src={ogPreview} alt="Imagen para redes" className="max-h-40 w-auto rounded border border-zinc-200 object-contain" />
+            )}
+            <p className="text-[11px] text-zinc-400">
+              Recomendado: 1200×630px. Es la imagen que se ve cuando alguien pega el link de tu sitio en WhatsApp o
+              redes sociales.
+            </p>
           </Card>
         </div>
 

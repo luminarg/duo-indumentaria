@@ -1,7 +1,14 @@
+import type { Metadata } from "next";
 import { notFound } from "next/navigation";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { PedidoForm } from "./PedidoForm";
 import { OrderTrackingView } from "./OrderTrackingView";
+
+// Link privado de un pedido puntual — no tiene que aparecer en buscadores
+// ni compartir su URL con nadie que no sea el cliente dueño del link.
+export const metadata: Metadata = {
+  robots: { index: false, follow: false },
+};
 
 // Página pública SIN LOGIN. El cliente llega acá con el link que le mandó
 // el hermano por WhatsApp: /pedido/<token>. Buscamos el pedido por token

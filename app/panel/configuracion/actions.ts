@@ -47,6 +47,12 @@ export async function updateBusinessSettings(formData: FormData) {
     faviconUrl = await uploadImage(admin, faviconFile, "favicon");
   }
 
+  const ogImageFile = formData.get("seo_og_image") as File | null;
+  let ogImageUrl: string | undefined;
+  if (ogImageFile && ogImageFile.size > 0) {
+    ogImageUrl = await uploadImage(admin, ogImageFile, "seo");
+  }
+
   const payload: Record<string, unknown> = {
     business_name: String(formData.get("business_name") || "Duo Indumentaria"),
     whatsapp_number: String(formData.get("whatsapp_number") || "") || null,
@@ -62,10 +68,14 @@ export async function updateBusinessSettings(formData: FormData) {
     quote_header_text: String(formData.get("quote_header_text") || "") || null,
     quote_footer_text: String(formData.get("quote_footer_text") || "") || null,
     quote_validity_days: Number(formData.get("quote_validity_days") || 7),
+    seo_title: String(formData.get("seo_title") || "").trim() || null,
+    seo_description: String(formData.get("seo_description") || "").trim() || null,
+    seo_keywords: String(formData.get("seo_keywords") || "").trim() || null,
     updated_at: new Date().toISOString(),
   };
   if (logoUrl) payload.logo_url = logoUrl;
   if (faviconUrl) payload.favicon_url = faviconUrl;
+  if (ogImageUrl) payload.seo_og_image_url = ogImageUrl;
 
   const { error } = await admin.from("business_settings").update(payload).eq("id", 1);
   if (error) throw new Error("No se pudo guardar: " + error.message);
