@@ -7,6 +7,7 @@ import { Input, Textarea } from "../../components/ui/Input";
 import { Button } from "../../components/ui/Button";
 import { SlidersManager } from "./SlidersManager";
 import { FeatureCardsManager } from "./FeatureCardsManager";
+import { SeoGuide } from "./SeoGuide";
 import { cn } from "@/lib/cn";
 
 type Settings = {
@@ -332,6 +333,8 @@ export function ConfigForm({
               redes sociales.
             </p>
           </Card>
+
+          <SeoGuide />
         </div>
 
         <Button type="submit" disabled={isPending} className="self-start">
