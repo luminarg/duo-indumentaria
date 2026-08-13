@@ -120,6 +120,19 @@ export async function uploadOrderResource(orderId: string, formData: FormData) {
   revalidatePath(`/panel/pedidos/${orderId}`);
 }
 
+// Borra el pedido y todo lo que cuelga de él por FK (items, recursos,
+// detalles técnicos) via "on delete cascade". Las tareas y compras
+// asociadas NO se borran, solo pierden el vínculo al pedido ("on delete
+// set null") — quedan sueltas en vez de desaparecer.
+export async function deleteOrder(orderId: string) {
+  await requireTeamMember();
+  const supabase = await createClient();
+  const { error } = await supabase.from("orders").delete().eq("id", orderId);
+  if (error) throw new Error("No se pudo borrar el pedido: " + error.message);
+  revalidatePath("/panel/pedidos");
+  revalidatePath("/panel");
+}
+
 export async function deleteOrderResource(resourceId: string, orderId: string, filePath: string) {
   await requireTeamMember();
   const admin = createAdminClient();

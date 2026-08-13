@@ -10,7 +10,7 @@ export default async function PresupuestosPage() {
     supabase.from("clients").select("id, name").order("name", { ascending: true }),
     supabase
       .from("quotes")
-      .select("id, quote_number, status, total, order_id, clients(name)")
+      .select("id, quote_number, status, total, order_id, accent_color, clients(name)")
       .order("created_at", { ascending: false }),
   ]);
 
@@ -29,6 +29,7 @@ export default async function PresupuestosPage() {
           status: q.status,
           total: q.total,
           order_id: q.order_id,
+          accentColor: q.accent_color,
           clientName: (q.clients as unknown as { name: string } | null)?.name ?? null,
         }))}
       />

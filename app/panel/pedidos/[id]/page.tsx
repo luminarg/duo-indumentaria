@@ -5,6 +5,7 @@ import { PageHeader } from "../../../components/ui/PageHeader";
 import { Button } from "../../../components/ui/Button";
 import { ShareOrderLink } from "../../../components/ui/ShareOrderLink";
 import { OrderDetail } from "./OrderDetail";
+import { DeleteOrderButton } from "./DeleteOrderButton";
 
 export default async function OrderDetailPage({
   params,
@@ -55,6 +56,7 @@ export default async function OrderDetailPage({
                 Descargar informe
               </Button>
             </a>
+            <DeleteOrderButton orderId={order.id} orderNumber={order.order_number} />
           </div>
         }
       />

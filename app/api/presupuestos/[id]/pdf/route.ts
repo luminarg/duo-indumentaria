@@ -34,6 +34,11 @@ export async function GET(_req: Request, { params }: { params: Promise<{ id: str
     email: string | null;
   } | null;
 
+  // Si el presupuesto tiene su propio color (para que coincida con los
+  // colores del club/equipo del cliente), pisa el primario y el secundario
+  // del negocio para todo el documento — header y tabla de artículos.
+  const customColor = quote.accent_color ?? null;
+
   const buffer = await renderToBuffer(
     QuotePdfDocument({
       business: {
@@ -44,8 +49,8 @@ export async function GET(_req: Request, { params }: { params: Promise<{ id: str
         email: settings?.contact_email ?? null,
         headerText: settings?.quote_header_text ?? null,
         footerText: settings?.quote_footer_text ?? null,
-        primaryColor: settings?.primary_color ?? "#0a0a0a",
-        secondaryColor: settings?.secondary_color ?? "#dc2626",
+        primaryColor: customColor ?? settings?.primary_color ?? "#0a0a0a",
+        secondaryColor: customColor ?? settings?.secondary_color ?? "#dc2626",
       },
       quote: {
         quoteNumber: quote.quote_number,

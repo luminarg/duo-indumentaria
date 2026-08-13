@@ -7,6 +7,7 @@ import { Card } from "../../../components/ui/Card";
 import { Button } from "../../../components/ui/Button";
 import { QuoteDetail } from "./QuoteDetail";
 import { QuoteItemsManager } from "./QuoteItemsManager";
+import { DeleteQuoteButton } from "./DeleteQuoteButton";
 
 export default async function QuoteDetailPage({
   params,
@@ -31,11 +32,14 @@ export default async function QuoteDetailPage({
         title={`Presupuesto ${quote.quote_number}`}
         description={`Cliente: ${clientName}`}
         action={
-          <a href={`/api/presupuestos/${quote.id}/pdf`} target="_blank" rel="noopener noreferrer">
-            <Button type="button" variant="secondary">
-              Descargar PDF
-            </Button>
-          </a>
+          <div className="flex items-center gap-2">
+            <a href={`/api/presupuestos/${quote.id}/pdf`} target="_blank" rel="noopener noreferrer">
+              <Button type="button" variant="secondary">
+                Descargar PDF
+              </Button>
+            </a>
+            <DeleteQuoteButton quoteId={quote.id} quoteNumber={quote.quote_number} />
+          </div>
         }
       />
 

@@ -18,6 +18,7 @@ type Quote = {
   valid_until: string | null;
   notes: string | null;
   status: string;
+  accent_color: string | null;
 };
 
 function formatMoney(value: number) {
@@ -30,6 +31,7 @@ export function QuoteDetail({ quote }: { quote: Quote }) {
   const [isPending, startTransition] = useTransition();
   const [error, setError] = useState<string | null>(null);
   const [message, setMessage] = useState<string | null>(null);
+  const [accentColor, setAccentColor] = useState(quote.accent_color ?? "");
 
   function handleSubmit(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault();
@@ -71,6 +73,34 @@ export function QuoteDetail({ quote }: { quote: Quote }) {
           defaultValue={quote.color_scheme ?? ""}
           hint="Combinación de colores o esquema acordado."
         />
+        <div className="flex flex-col gap-1 text-xs font-medium text-zinc-500 sm:col-span-2">
+          Color del presupuesto
+          <div className="mt-1 flex items-center gap-2">
+            <input
+              type="color"
+              value={accentColor || "#18181b"}
+              onChange={(e) => setAccentColor(e.target.value)}
+              className="h-9 w-14 cursor-pointer rounded-md border border-zinc-300 bg-white p-1"
+            />
+            <input type="hidden" name="accent_color" value={accentColor} />
+            <span className="text-sm font-normal text-zinc-600">
+              {accentColor ? accentColor : "Usa el color del negocio por defecto"}
+            </span>
+            {accentColor && (
+              <button
+                type="button"
+                onClick={() => setAccentColor("")}
+                className="text-xs font-normal text-zinc-400 underline hover:text-zinc-600"
+              >
+                Quitar
+              </button>
+            )}
+          </div>
+          <span className="text-[11px] font-normal text-zinc-400">
+            Opcional — por ejemplo, para que el PDF salga con los colores del equipo/club del cliente. Si no
+            elegís uno, se usa el color del negocio.
+          </span>
+        </div>
         <Textarea
           label="Notas de moldería"
           name="pattern_notes"

@@ -24,7 +24,7 @@ const NAV = [
   { href: "/panel/disenos", label: "Diseños", icon: Images },
   { href: "/panel/tareas", label: "Tareas", icon: CheckSquare },
   { href: "/panel/agenda", label: "Agenda", icon: Calendar },
-  { href: "/panel/compras", label: "Compras y gastos", icon: Wallet },
+  { href: "/panel/compras", label: "Caja", icon: Wallet },
   { href: "/panel/usuarios", label: "Usuarios", icon: UserCog },
   { href: "/panel/configuracion", label: "Configuración", icon: Settings },
 ];

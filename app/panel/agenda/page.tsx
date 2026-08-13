@@ -6,7 +6,7 @@ export default async function AgendaPage() {
   const supabase = await createClient();
   const nowIso = new Date().toISOString();
 
-  const [{ data: upcomingRaw }, { data: pastRaw }, { data: clients }] = await Promise.all([
+  const [{ data: upcomingRaw }, { data: pastRaw }, { data: clients }, { data: contacts }] = await Promise.all([
     supabase
       .from("agenda_events")
       .select("id, title, event_type, event_at, notes, clients(name)")
@@ -19,6 +19,7 @@ export default async function AgendaPage() {
       .order("event_at", { ascending: false })
       .limit(20),
     supabase.from("clients").select("id, name").order("name", { ascending: true }),
+    supabase.from("frequent_contacts").select("*").order("name", { ascending: true }),
   ]);
 
   const mapEvent = (e: NonNullable<typeof upcomingRaw>[number]) => ({
@@ -32,11 +33,12 @@ export default async function AgendaPage() {
 
   return (
     <div>
-      <PageHeader title="Agenda" description="Llamadas, reuniones y entregas." />
+      <PageHeader title="Agenda" description="Llamadas, reuniones, entregas y contactos frecuentes." />
       <AgendaManager
         upcoming={(upcomingRaw ?? []).map(mapEvent)}
         past={(pastRaw ?? []).map(mapEvent)}
         clients={clients ?? []}
+        contacts={contacts ?? []}
       />
     </div>
   );

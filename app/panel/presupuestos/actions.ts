@@ -83,6 +83,7 @@ export async function createQuoteWithItems(
 
   const depositPercent = Number(formData.get("deposit_percent") || 50);
   const total = items.reduce((sum, i) => sum + i.unitPrice * i.quantity, 0);
+  const accentColor = String(formData.get("accent_color") || "").trim() || null;
 
   const { data: quote, error: quoteError } = await supabase
     .from("quotes")
@@ -91,6 +92,7 @@ export async function createQuoteWithItems(
       items_description: String(formData.get("items_description") || "").trim() || null,
       fabric: String(formData.get("fabric") || "").trim() || null,
       color_scheme: String(formData.get("color_scheme") || "").trim() || null,
+      accent_color: accentColor,
       subtotal: total,
       total,
       deposit_percent: depositPercent,
@@ -141,6 +143,7 @@ export async function updateQuote(quoteId: string, formData: FormData) {
       fabric: String(formData.get("fabric") || "").trim() || null,
       color_scheme: String(formData.get("color_scheme") || "").trim() || null,
       pattern_notes: String(formData.get("pattern_notes") || "").trim() || null,
+      accent_color: String(formData.get("accent_color") || "").trim() || null,
       deposit_percent: depositPercent,
       deposit_amount: (total * depositPercent) / 100,
       valid_until: String(formData.get("valid_until") || "") || null,
@@ -224,6 +227,16 @@ export async function deleteQuoteItem(itemId: string, quoteId: string) {
 
   await recalcQuoteTotals(quoteId);
   revalidatePath(`/panel/presupuestos/${quoteId}`);
+}
+
+// Borra el presupuesto y sus artículos (cascada por FK). Si ya generó un
+// pedido, el pedido NO se borra — solo pierde el vínculo al presupuesto.
+export async function deleteQuote(quoteId: string) {
+  await requireTeamMember();
+  const supabase = await createClient();
+  const { error } = await supabase.from("quotes").delete().eq("id", quoteId);
+  if (error) throw new Error("No se pudo borrar el presupuesto: " + error.message);
+  revalidatePath("/panel/presupuestos");
 }
 
 // El punto de inflexión del flujo: acá se genera el pedido a partir de un

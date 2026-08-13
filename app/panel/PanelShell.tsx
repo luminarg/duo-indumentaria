@@ -5,6 +5,7 @@ import { usePathname } from "next/navigation";
 import { Menu, X, LogOut } from "lucide-react";
 import { cn } from "@/lib/cn";
 import { PanelNav } from "./PanelNav";
+import { WhatsNewModal } from "./WhatsNewModal";
 
 // Envoltorio del panel: fondo abstracto + sidebar. En desktop el sidebar
 // queda fijo en la columna izquierda como siempre. En mobile se esconde
@@ -15,11 +16,13 @@ export function PanelShell({
   businessName,
   logoUrl,
   logout,
+  showWhatsNew,
   children,
 }: {
   businessName: string;
   logoUrl: string | null;
   logout: () => Promise<void>;
+  showWhatsNew: boolean;
   children: React.ReactNode;
 }) {
   const [open, setOpen] = useState(false);
@@ -32,6 +35,7 @@ export function PanelShell({
 
   return (
     <div className="flex min-h-screen">
+      <WhatsNewModal initialOpen={showWhatsNew} />
       {/* Fondo abstracto — fixed para que quede fijo detrás de todas las
           pantallas del panel sin importar cuánto scrollee el contenido. */}
       <div className="pointer-events-none fixed inset-0 -z-10 bg-gradient-to-br from-indigo-50 via-white to-emerald-50" />

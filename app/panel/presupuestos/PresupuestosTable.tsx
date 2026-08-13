@@ -12,6 +12,7 @@ type Quote = {
   status: string;
   total: number;
   order_id: string | null;
+  accentColor: string | null;
   clientName: string | null;
 };
 
@@ -48,7 +49,17 @@ export function PresupuestosTable({ quotes }: { quotes: Quote[] }) {
               {filtered.map((q) => (
                 <tr key={q.id} className="border-b border-zinc-100 last:border-0 hover:bg-white/40">
                   <td className="px-5 py-3">
-                    <Link href={`/panel/presupuestos/${q.id}`} className="font-medium text-zinc-900 hover:underline">
+                    <Link
+                      href={`/panel/presupuestos/${q.id}`}
+                      className="flex items-center gap-2 font-medium text-zinc-900 hover:underline"
+                    >
+                      {q.accentColor && (
+                        <span
+                          className="h-2.5 w-2.5 shrink-0 rounded-full border border-black/10"
+                          style={{ backgroundColor: q.accentColor }}
+                          title="Color propio del presupuesto"
+                        />
+                      )}
                       {q.quote_number}
                     </Link>
                   </td>

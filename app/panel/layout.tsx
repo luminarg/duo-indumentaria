@@ -3,6 +3,12 @@ import { createClient } from "@/lib/supabase/server";
 import { logout } from "./login/actions";
 import { PanelShell } from "./PanelShell";
 
+// Fecha de la última tanda de novedades — si un usuario tiene
+// whats_new_seen_at anterior a esto (o nunca vio nada), le mostramos el
+// aviso de "Qué hay de nuevo" una vez. Para la próxima tanda, alcanza con
+// mover esta fecha hacia adelante.
+const WHATS_NEW_RELEASE_AT = "2026-08-13T00:00:00Z";
+
 // Metadata específica de /panel (PWA) — al vivir en este layout anidado en
 // vez del layout raíz, solo se aplica dentro de /panel/* y no afecta al
 // sitio público (home, catálogo, /pedido/[token]).
@@ -64,17 +70,18 @@ export default async function PanelLayout({
     return <div className="min-h-screen bg-zinc-50">{children}</div>;
   }
 
-  const { data: settings } = await supabase
-    .from("business_settings")
-    .select("business_name, logo_url")
-    .eq("id", 1)
-    .single();
+  const [{ data: settings }, { data: profile }] = await Promise.all([
+    supabase.from("business_settings").select("business_name, logo_url").eq("id", 1).single(),
+    supabase.from("profiles").select("whats_new_seen_at").eq("id", user.id).single(),
+  ]);
 
   const businessName = settings?.business_name ?? "Duo Indumentaria";
   const logoUrl = settings?.logo_url ?? null;
+  const seenAt = profile?.whats_new_seen_at;
+  const showWhatsNew = !seenAt || new Date(seenAt) < new Date(WHATS_NEW_RELEASE_AT);
 
   return (
-    <PanelShell businessName={businessName} logoUrl={logoUrl} logout={logout}>
+    <PanelShell businessName={businessName} logoUrl={logoUrl} logout={logout} showWhatsNew={showWhatsNew}>
       {children}
     </PanelShell>
   );

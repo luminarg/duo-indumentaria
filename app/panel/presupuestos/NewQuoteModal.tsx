@@ -175,6 +175,7 @@ export function NewQuoteModal({
   const [newClientEmail, setNewClientEmail] = useState("");
   const [savedClientId, setSavedClientId] = useState<string | null>(null);
   const [items, setItems] = useState<CartItem[]>([]);
+  const [accentColor, setAccentColor] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [isSavingClient, startSavingClient] = useTransition();
 
@@ -350,6 +351,34 @@ export function NewQuoteModal({
             placeholder="Ej: Blanco y rojo, mangas negras"
             hint="Combinación de colores o esquema acordado."
           />
+        </div>
+
+        <div className="flex flex-col gap-1">
+          <span className="text-xs font-medium text-zinc-500">Color del presupuesto (opcional)</span>
+          <div className="flex items-center gap-2">
+            <input
+              type="color"
+              value={accentColor || "#18181b"}
+              onChange={(e) => setAccentColor(e.target.value)}
+              className="h-9 w-14 cursor-pointer rounded-md border border-zinc-300 bg-white p-1"
+            />
+            <input type="hidden" name="accent_color" value={accentColor} />
+            <span className="text-sm text-zinc-600">
+              {accentColor ? accentColor : "Usa el color del negocio por defecto"}
+            </span>
+            {accentColor && (
+              <button
+                type="button"
+                onClick={() => setAccentColor("")}
+                className="text-xs text-zinc-400 underline hover:text-zinc-600"
+              >
+                Quitar
+              </button>
+            )}
+          </div>
+          <span className="text-[11px] text-zinc-400">
+            Por ejemplo, para que el PDF salga con los colores del equipo/club del cliente.
+          </span>
         </div>
 
         <ItemsCart items={items} onChange={setItems} />

@@ -51,3 +51,36 @@ export async function deleteEvent(eventId: string) {
   revalidatePath("/panel/agenda");
   revalidatePath("/panel");
 }
+
+// ---------------------------------------------------------------------------
+// Contactos frecuentes (comisionistas, proveedores de tela/insumos, etc.) —
+// gente con la que se habla seguido pero que no es ni cliente ni proveedor
+// "formal" cargado en Compras.
+// ---------------------------------------------------------------------------
+
+export async function createFrequentContact(formData: FormData) {
+  await requireTeamMember();
+  const supabase = await createClient();
+
+  const name = String(formData.get("name") || "").trim();
+  if (!name) throw new Error("Falta el nombre del contacto");
+
+  const { error } = await supabase.from("frequent_contacts").insert({
+    name,
+    category: String(formData.get("category") || "otro"),
+    phone: String(formData.get("phone") || "").trim() || null,
+    email: String(formData.get("email") || "").trim() || null,
+    notes: String(formData.get("notes") || "").trim() || null,
+  });
+
+  if (error) throw new Error("No se pudo guardar el contacto: " + error.message);
+  revalidatePath("/panel/agenda");
+}
+
+export async function deleteFrequentContact(contactId: string) {
+  await requireTeamMember();
+  const supabase = await createClient();
+  const { error } = await supabase.from("frequent_contacts").delete().eq("id", contactId);
+  if (error) throw new Error("No se pudo borrar el contacto: " + error.message);
+  revalidatePath("/panel/agenda");
+}
