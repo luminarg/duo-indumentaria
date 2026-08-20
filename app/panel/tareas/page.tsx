@@ -1,11 +1,13 @@
 import { createClient } from "@/lib/supabase/server";
 import { PageHeader } from "../../components/ui/PageHeader";
 import { TareasBoard } from "./TareasBoard";
+import { NotificationsToggle } from "../NotificationsToggle";
+import { hasAnyPushSubscription } from "../push-actions";
 
 export default async function TareasPage() {
   const supabase = await createClient();
 
-  const [{ data: tasksRaw }, { data: orders }, { data: teamMembers }] = await Promise.all([
+  const [{ data: tasksRaw }, { data: orders }, { data: teamMembers }, alreadySubscribed] = await Promise.all([
     supabase
       .from("tasks")
       .select("id, title, description, status, priority, due_date, orders(order_number), profiles(full_name)")
@@ -13,6 +15,7 @@ export default async function TareasPage() {
       .order("created_at", { ascending: false }),
     supabase.from("orders").select("id, order_number").order("created_at", { ascending: false }),
     supabase.from("profiles").select("id, full_name").order("full_name", { ascending: true }),
+    hasAnyPushSubscription(),
   ]);
 
   const tasks = (tasksRaw ?? []).map((t) => ({
@@ -28,7 +31,11 @@ export default async function TareasPage() {
 
   return (
     <div>
-      <PageHeader title="Tareas" description="Kanban con prioridad y vencimiento, vinculadas a pedidos." />
+      <PageHeader
+        title="Tareas"
+        description="Kanban con prioridad y vencimiento, vinculadas a pedidos."
+        action={<NotificationsToggle initiallySubscribed={alreadySubscribed} />}
+      />
       <TareasBoard tasks={tasks} orders={orders ?? []} teamMembers={teamMembers ?? []} />
     </div>
   );

@@ -5,6 +5,26 @@ import { QuotePdfDocument } from "@/lib/pdf/QuotePdfDocument";
 
 export const runtime = "nodejs";
 
+// Nombre de archivo pedido: "nombredecliente-presupuesto-dd-mm-aaaa" — sin
+// acentos ni espacios, para que quede prolijo al descargarlo desde
+// cualquier navegador/sistema operativo.
+function slugify(text: string) {
+  return text
+    .normalize("NFD")
+    .replace(/[̀-ͯ]/g, "") // saca acentos (tras NFD quedan como marca de combinación aparte)
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "");
+}
+
+function buildQuoteFilename(clientName: string, createdAt: string) {
+  const date = new Date(createdAt);
+  const dd = String(date.getDate()).padStart(2, "0");
+  const mm = String(date.getMonth() + 1).padStart(2, "0");
+  const yyyy = date.getFullYear();
+  const clientSlug = slugify(clientName) || "cliente";
+  return `${clientSlug}-presupuesto-${dd}-${mm}-${yyyy}.pdf`;
+}
+
 export async function GET(_req: Request, { params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
   const supabase = await createClient();
@@ -80,10 +100,12 @@ export async function GET(_req: Request, { params }: { params: Promise<{ id: str
     })
   );
 
+  const filename = buildQuoteFilename(client?.name ?? "cliente", quote.created_at);
+
   return new NextResponse(new Uint8Array(buffer), {
     headers: {
       "Content-Type": "application/pdf",
-      "Content-Disposition": `inline; filename="${quote.quote_number}.pdf"`,
+      "Content-Disposition": `inline; filename="${filename}"`,
     },
   });
 }

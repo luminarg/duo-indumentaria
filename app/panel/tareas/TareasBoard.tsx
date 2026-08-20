@@ -34,6 +34,16 @@ const PRIORITY_STYLES: Record<Task["priority"], string> = {
   baja: "bg-zinc-100 text-zinc-600",
 };
 
+// Tinte de fondo por columna/estado — en rgba (no clases bg-*) porque las
+// tarjetas usan el sistema "glass" (fondo semitransparente + blur definido
+// en globals.css vía la clase .glass-card); un color inline pisa ese fondo
+// sin tener que pelear con el orden de las clases en el CSS.
+const STATUS_CARD_TINT: Record<Task["status"], string> = {
+  pendiente: "rgba(254, 202, 202, 0.4)", // rojo claro
+  en_curso: "rgba(186, 230, 253, 0.4)", // celeste
+  hecha: "rgba(187, 247, 208, 0.4)", // verde
+};
+
 const PRIORITY_LABELS: Record<Task["priority"], string> = {
   alta: "Alta",
   media: "Media",
@@ -162,7 +172,11 @@ export function TareasBoard({
                 {columnTasks.map((task) => {
                   const overdue = isOverdue(task.due_date, task.status);
                   return (
-                    <Card key={task.id} className="flex flex-col gap-2">
+                    <Card
+                      key={task.id}
+                      className="flex flex-col gap-2"
+                      style={{ backgroundColor: STATUS_CARD_TINT[task.status] }}
+                    >
                       <div className="flex items-start justify-between gap-2">
                         <p className="text-sm font-medium text-zinc-900">{task.title}</p>
                         <span className={cn("shrink-0 rounded-full px-2 py-0.5 text-xs font-medium", PRIORITY_STYLES[task.priority])}>
