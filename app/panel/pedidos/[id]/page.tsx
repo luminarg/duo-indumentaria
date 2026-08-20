@@ -15,14 +15,20 @@ export default async function OrderDetailPage({
   const { id } = await params;
   const supabase = await createClient();
 
-  const [{ data: order }, { data: details }, { data: items }, { data: resources }] = await Promise.all([
-    supabase.from("orders").select("*").eq("id", id).single(),
-    supabase.from("order_technical_details").select("*").eq("order_id", id).maybeSingle(),
-    supabase.from("order_items").select("*").eq("order_id", id),
-    supabase.from("order_resources").select("*").eq("order_id", id).order("uploaded_at", { ascending: false }),
-  ]);
+  const [{ data: order }, { data: details }, { data: items }, { data: resources }, { data: requirements }] =
+    await Promise.all([
+      supabase.from("orders").select("*").eq("id", id).single(),
+      supabase.from("order_technical_details").select("*").eq("order_id", id).maybeSingle(),
+      supabase.from("order_items").select("*").eq("order_id", id),
+      supabase.from("order_resources").select("*").eq("order_id", id).order("uploaded_at", { ascending: false }),
+      supabase.from("order_article_requirements").select("id, description").eq("order_id", id),
+    ]);
 
   if (!order) notFound();
+
+  // Mapa id de requisito → descripción del artículo, para mostrar qué
+  // artículo del presupuesto corresponde a cada prenda cargada.
+  const articleByRequirementId = Object.fromEntries((requirements ?? []).map((r) => [r.id, r.description]));
 
   // Los recursos están en un bucket privado — generamos URLs firmadas
   // (1 hora) solo para esta vista, en vez de exponerlos públicamente.
@@ -60,7 +66,13 @@ export default async function OrderDetailPage({
           </div>
         }
       />
-      <OrderDetail order={order} details={details} items={items ?? []} resources={resourcesWithUrls} />
+      <OrderDetail
+        order={order}
+        details={details}
+        items={items ?? []}
+        resources={resourcesWithUrls}
+        articleByRequirementId={articleByRequirementId}
+      />
     </div>
   );
 }

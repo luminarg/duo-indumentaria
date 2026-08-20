@@ -29,6 +29,7 @@ type QuotePdfProps = {
     notes: string | null;
   };
   items: { description: string; unitPrice: number; quantity: number }[];
+  sizeGuides?: { name: string; sizes: { label: string; measurements: string | null }[] }[];
   client: {
     name: string;
     contactName: string | null;
@@ -46,7 +47,7 @@ function formatDate(iso: string) {
   return new Date(iso).toLocaleDateString("es-AR");
 }
 
-export function QuotePdfDocument({ business, quote, items, client }: QuotePdfProps) {
+export function QuotePdfDocument({ business, quote, items, sizeGuides = [], client }: QuotePdfProps) {
   const contactLine = [business.address, business.phone, business.email].filter(Boolean).join(" · ");
   const accent = business.secondaryColor || "#18181b";
   const accentText = getReadableForeground(accent);
@@ -145,6 +146,29 @@ export function QuotePdfDocument({ business, quote, items, client }: QuotePdfPro
                 </View>
               ))}
             </View>
+          </View>
+        )}
+
+        {sizeGuides.length > 0 && (
+          <View style={pdfStyles.section}>
+            <Text style={pdfStyles.sectionTitle}>Guía de talles</Text>
+            {sizeGuides.map((guide) => (
+              <View key={guide.name} style={{ marginBottom: 6 }}>
+                <Text style={[pdfStyles.label, { marginBottom: 2 }]}>{guide.name}</Text>
+                <View style={pdfStyles.table}>
+                  <View style={[pdfStyles.tableHeaderRow, { backgroundColor: accent, borderBottomWidth: 0, borderRadius: 4 }]}>
+                    <Text style={[pdfStyles.tableCell, { color: accentText }]}>Talle</Text>
+                    <Text style={[pdfStyles.tableCell, { color: accentText, flex: 3 }]}>Medidas</Text>
+                  </View>
+                  {guide.sizes.map((s) => (
+                    <View key={s.label} style={pdfStyles.tableRow}>
+                      <Text style={pdfStyles.tableCell}>{s.label}</Text>
+                      <Text style={[pdfStyles.tableCell, { flex: 3 }]}>{s.measurements}</Text>
+                    </View>
+                  ))}
+                </View>
+              </View>
+            ))}
           </View>
         )}
 

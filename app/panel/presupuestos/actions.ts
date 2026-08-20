@@ -53,7 +53,14 @@ export async function createClientInline(input: {
 // argumento "bindeado" al form action (así el modal puede armar la lista
 // en el cliente sin depender de inputs ocultos serializados a mano).
 export async function createQuoteWithItems(
-  items: { description: string; unitPrice: number; quantity: number }[],
+  items: {
+    description: string;
+    unitPrice: number;
+    quantity: number;
+    articleTypeId: string | null;
+    requiresNumber: boolean;
+    requiresName: boolean;
+  }[],
   formData: FormData
 ) {
   const user = await requireTeamMember();
@@ -113,6 +120,9 @@ export async function createQuoteWithItems(
         description: item.description,
         unit_price: item.unitPrice,
         quantity: item.quantity,
+        article_type_id: item.articleTypeId,
+        requires_number: item.requiresNumber,
+        requires_name: item.requiresName,
         sort_order: i,
       }))
     );
@@ -183,6 +193,7 @@ export async function createQuoteItem(quoteId: string, formData: FormData) {
   if (!description) throw new Error("Falta la descripción del artículo");
   const unitPrice = Number(formData.get("unit_price") || 0);
   const quantity = Number(formData.get("quantity") || 1);
+  const articleTypeId = String(formData.get("article_type_id") || "") || null;
 
   const { data: existing } = await supabase.from("quote_items").select("id").eq("quote_id", quoteId);
 
@@ -191,6 +202,9 @@ export async function createQuoteItem(quoteId: string, formData: FormData) {
     description,
     unit_price: unitPrice,
     quantity,
+    article_type_id: articleTypeId,
+    requires_number: formData.get("requires_number") === "on",
+    requires_name: formData.get("requires_name") === "on",
     sort_order: existing?.length ?? 0,
   });
   if (error) throw new Error("No se pudo agregar el artículo: " + error.message);
@@ -207,10 +221,18 @@ export async function updateQuoteItem(itemId: string, quoteId: string, formData:
   if (!description) throw new Error("Falta la descripción del artículo");
   const unitPrice = Number(formData.get("unit_price") || 0);
   const quantity = Number(formData.get("quantity") || 1);
+  const articleTypeId = String(formData.get("article_type_id") || "") || null;
 
   const { error } = await supabase
     .from("quote_items")
-    .update({ description, unit_price: unitPrice, quantity })
+    .update({
+      description,
+      unit_price: unitPrice,
+      quantity,
+      article_type_id: articleTypeId,
+      requires_number: formData.get("requires_number") === "on",
+      requires_name: formData.get("requires_name") === "on",
+    })
     .eq("id", itemId);
   if (error) throw new Error("No se pudo guardar el artículo: " + error.message);
 
@@ -241,8 +263,20 @@ export async function deleteQuote(quoteId: string) {
 
 // El punto de inflexión del flujo: acá se genera el pedido a partir de un
 // presupuesto ya acordado con el cliente. Copia tela/color/moldería al
-// pedido para no tener que volver a cargarlas.
-export async function generateOrderFromQuote(quoteId: string) {
+// pedido para no tener que volver a cargarlas, y "congela" por cada
+// artículo si el cliente va a tener que cargar nombre/número (una fila por
+// persona) o solo cantidad por talle — lo que el admin confirmó en el
+// modal justo antes de generar el link.
+export async function generateOrderFromQuote(
+  requirements: {
+    description: string;
+    articleTypeId: string | null;
+    requiresNumber: boolean;
+    requiresName: boolean;
+    quantityQuoted: number;
+  }[],
+  quoteId: string
+) {
   const user = await requireTeamMember();
   const supabase = await createClient();
 
@@ -276,6 +310,23 @@ export async function generateOrderFromQuote(quoteId: string) {
     color_scheme: quote.color_scheme,
     pattern_notes: quote.pattern_notes,
   });
+
+  if (requirements.length > 0) {
+    const { error: reqError } = await supabase.from("order_article_requirements").insert(
+      requirements.map((r, i) => ({
+        order_id: order.id,
+        description: r.description,
+        article_type_id: r.articleTypeId,
+        requires_number: r.requiresNumber,
+        requires_name: r.requiresName,
+        quantity_quoted: r.quantityQuoted,
+        sort_order: i,
+      }))
+    );
+    if (reqError) {
+      throw new Error("El pedido se creó pero hubo un error al preparar los artículos: " + reqError.message);
+    }
+  }
 
   await supabase
     .from("quotes")

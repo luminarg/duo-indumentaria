@@ -40,6 +40,7 @@ type Item = {
   individual_name: string | null;
   individual_number: string | null;
   quantity: number;
+  requirement_id: string | null;
 };
 
 type Resource = {
@@ -77,11 +78,13 @@ export function OrderDetail({
   details,
   items,
   resources,
+  articleByRequirementId,
 }: {
   order: Order;
   details: Details;
   items: Item[];
   resources: Resource[];
+  articleByRequirementId: Record<string, string>;
 }) {
   const [isPending, startTransition] = useTransition();
   const [error, setError] = useState<string | null>(null);
@@ -249,6 +252,7 @@ export function OrderDetail({
           <table className="w-full text-left text-sm">
             <thead>
               <tr className="border-b border-zinc-200 text-zinc-500">
+                <th className="py-2 pr-4">Artículo</th>
                 <th className="py-2 pr-4">Talle</th>
                 <th className="py-2 pr-4">Nombre</th>
                 <th className="py-2 pr-4">Número</th>
@@ -258,6 +262,9 @@ export function OrderDetail({
             <tbody>
               {items.map((item) => (
                 <tr key={item.id} className="border-b border-zinc-100 last:border-0">
+                  <td className="py-2 pr-4 text-zinc-500">
+                    {(item.requirement_id && articleByRequirementId[item.requirement_id]) ?? "—"}
+                  </td>
                   <td className="py-2 pr-4">{item.size_label ?? "—"}</td>
                   <td className="py-2 pr-4">{item.individual_name ?? "—"}</td>
                   <td className="py-2 pr-4">{item.individual_number ?? "—"}</td>

@@ -4,29 +4,43 @@ import { revalidatePath } from "next/cache";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { z } from "zod";
 
-const itemSchema = z.object({
+const rowSchema = z.object({
   size: z.string().min(1, "Falta el talle"),
   individualName: z.string().optional(),
   individualNumber: z.string().optional(),
   quantity: z.coerce.number().int().min(1),
 });
 
-const submitSchema = z.object({
-  token: z.string().min(1),
-  teamOrGroupName: z.string().optional(),
-  contactName: z.string().min(1, "Falta el nombre de contacto"),
-  contactPhone: z.string().min(1, "Falta un teléfono de contacto"),
-  contactEmail: z.string().email().optional().or(z.literal("")),
-  generalNotes: z.string().optional(),
-  items: z.array(itemSchema).min(1, "Cargá al menos una prenda"),
+// Un "requirement" = un artículo del presupuesto (ej. "Remera") con sus
+// filas cargadas por el cliente. `requirementId` es null para prendas
+// sueltas de pedidos viejos, de antes de que existiera esta función —
+// se guardan igual, sin vincular a ningún artículo.
+const requirementSchema = z.object({
+  requirementId: z.string().nullable(),
+  rows: z.array(rowSchema),
 });
+
+const submitSchema = z
+  .object({
+    token: z.string().min(1),
+    teamOrGroupName: z.string().optional(),
+    contactName: z.string().min(1, "Falta el nombre de contacto"),
+    contactPhone: z.string().min(1, "Falta un teléfono de contacto"),
+    contactEmail: z.string().email().optional().or(z.literal("")),
+    generalNotes: z.string().optional(),
+    requirements: z.array(requirementSchema),
+  })
+  .refine((data) => data.requirements.some((r) => r.rows.length > 0), {
+    message: "Cargá al menos una prenda",
+  });
 
 export type SubmitPedidoInput = z.infer<typeof submitSchema>;
 
 // Nota: el diseño (tela, color, moldería) lo carga el dueño al crear el
 // pedido, desde el panel — este formulario público NO lo toca, para no
-// pisar esas decisiones. Acá el cliente solo confirma datos de contacto y
-// la lista de prendas (talle, nombre/número, cantidad).
+// pisar esas decisiones. Acá el cliente solo confirma datos de contacto y,
+// por cada artículo del presupuesto, talle+nombre+número (si lleva) o
+// cantidad por talle (si no lleva).
 export async function submitPedido(input: SubmitPedidoInput) {
   const parsed = submitSchema.safeParse(input);
   if (!parsed.success) {
@@ -67,20 +81,25 @@ export async function submitPedido(input: SubmitPedidoInput) {
     return { ok: false as const, error: "No se pudo guardar el pedido, probá de nuevo" };
   }
 
-  // Reemplaza los items cargados (simple: borra e inserta de nuevo)
+  // Reemplaza los items cargados (simple: borra e inserta de nuevo).
   await supabase.from("order_items").delete().eq("order_id", order.id);
-  const { error: itemsError } = await supabase.from("order_items").insert(
-    data.items.map((item) => ({
+
+  const itemsToInsert = data.requirements.flatMap((req) =>
+    req.rows.map((row) => ({
       order_id: order.id,
-      individual_name: item.individualName || null,
-      individual_number: item.individualNumber || null,
-      quantity: item.quantity,
-      size_label: item.size,
+      requirement_id: req.requirementId,
+      individual_name: row.individualName || null,
+      individual_number: row.individualNumber || null,
+      quantity: row.quantity,
+      size_label: row.size,
     }))
   );
 
-  if (itemsError) {
-    return { ok: false as const, error: "Se guardaron tus datos pero hubo un problema con las prendas" };
+  if (itemsToInsert.length > 0) {
+    const { error: itemsError } = await supabase.from("order_items").insert(itemsToInsert);
+    if (itemsError) {
+      return { ok: false as const, error: "Se guardaron tus datos pero hubo un problema con las prendas" };
+    }
   }
 
   revalidatePath(`/pedido/${data.token}`);

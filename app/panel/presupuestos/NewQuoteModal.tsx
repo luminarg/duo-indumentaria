@@ -8,12 +8,16 @@ import { Input, Textarea, Select } from "../../components/ui/Input";
 import { Button } from "../../components/ui/Button";
 
 type Client = { id: string; name: string };
+type ArticleType = { id: string; name: string; requires_number: boolean; requires_name: boolean };
 
 type CartItem = {
   tempId: string;
   description: string;
   unitPrice: number;
   quantity: number;
+  articleTypeId: string | null;
+  requiresNumber: boolean;
+  requiresName: boolean;
 };
 
 function formatMoney(value: number) {
@@ -23,17 +27,49 @@ function formatMoney(value: number) {
 const cellInputClass =
   "w-full rounded border border-transparent bg-transparent px-1 py-0.5 focus:border-zinc-300 focus:bg-white focus:outline-none";
 
-function ItemsCart({ items, onChange }: { items: CartItem[]; onChange: (items: CartItem[]) => void }) {
+function ItemsCart({
+  items,
+  onChange,
+  articleTypes,
+}: {
+  items: CartItem[];
+  onChange: (items: CartItem[]) => void;
+  articleTypes: ArticleType[];
+}) {
   const [description, setDescription] = useState("");
   const [unitPrice, setUnitPrice] = useState(0);
   const [quantity, setQuantity] = useState(1);
+  const [articleTypeId, setArticleTypeId] = useState("");
+  const [requiresNumber, setRequiresNumber] = useState(false);
+  const [requiresName, setRequiresName] = useState(false);
+
+  function handleArticleTypeChange(id: string) {
+    setArticleTypeId(id);
+    const at = articleTypes.find((a) => a.id === id);
+    setRequiresNumber(at?.requires_number ?? false);
+    setRequiresName(at?.requires_name ?? false);
+  }
 
   function addItem() {
     if (!description.trim()) return;
-    onChange([...items, { tempId: crypto.randomUUID(), description: description.trim(), unitPrice, quantity }]);
+    onChange([
+      ...items,
+      {
+        tempId: crypto.randomUUID(),
+        description: description.trim(),
+        unitPrice,
+        quantity,
+        articleTypeId: articleTypeId || null,
+        requiresNumber,
+        requiresName,
+      },
+    ]);
     setDescription("");
     setUnitPrice(0);
     setQuantity(1);
+    setArticleTypeId("");
+    setRequiresNumber(false);
+    setRequiresName(false);
   }
 
   function updateItem(tempId: string, patch: Partial<CartItem>) {
@@ -41,6 +77,7 @@ function ItemsCart({ items, onChange }: { items: CartItem[]; onChange: (items: C
   }
 
   const total = items.reduce((sum, i) => sum + i.unitPrice * i.quantity, 0);
+  const articleTypeName = (id: string | null) => articleTypes.find((a) => a.id === id)?.name ?? null;
 
   return (
     <div className="flex flex-col gap-2">
@@ -73,6 +110,13 @@ function ItemsCart({ items, onChange }: { items: CartItem[]; onChange: (items: C
                       onChange={(e) => updateItem(item.tempId, { description: e.target.value })}
                       className={cellInputClass + " text-zinc-800"}
                     />
+                    {(articleTypeName(item.articleTypeId) || item.requiresNumber || item.requiresName) && (
+                      <p className="px-1 text-[10px] text-zinc-400">
+                        {articleTypeName(item.articleTypeId) ?? "Sin tipo"}
+                        {item.requiresNumber ? " · con número" : ""}
+                        {item.requiresName ? " · con nombre" : ""}
+                      </p>
+                    )}
                   </td>
                   <td className="px-1 py-1">
                     <input
@@ -111,36 +155,66 @@ function ItemsCart({ items, onChange }: { items: CartItem[]; onChange: (items: C
         </div>
       )}
 
-      <div className="grid grid-cols-[1fr_5.5rem_4rem_auto] items-center gap-1.5 rounded-md border border-dashed border-zinc-300 p-2">
-        <input
-          value={description}
-          onChange={(e) => setDescription(e.target.value)}
-          placeholder="Ej: Camiseta manga corta"
-          className="rounded-md border border-zinc-300 px-2 py-1.5 text-sm focus:border-zinc-500 focus:outline-none"
-        />
-        <input
-          type="number"
-          step="0.01"
-          value={unitPrice || ""}
-          onChange={(e) => setUnitPrice(Number(e.target.value) || 0)}
-          placeholder="Precio"
-          className="rounded-md border border-zinc-300 px-2 py-1.5 text-sm focus:border-zinc-500 focus:outline-none"
-        />
-        <input
-          type="number"
-          value={quantity}
-          onChange={(e) => setQuantity(Number(e.target.value) || 0)}
-          placeholder="Cant."
-          className="rounded-md border border-zinc-300 px-2 py-1.5 text-sm focus:border-zinc-500 focus:outline-none"
-        />
-        <button
-          type="button"
-          onClick={addItem}
-          className="flex items-center justify-center rounded-md bg-zinc-900 p-1.5 text-white hover:bg-zinc-800"
-          aria-label="Agregar artículo"
-        >
-          <Plus className="h-4 w-4" />
-        </button>
+      <div className="flex flex-col gap-1.5 rounded-md border border-dashed border-zinc-300 p-2">
+        {articleTypes.length > 0 && (
+          <div className="flex flex-wrap items-center gap-3">
+            <select
+              value={articleTypeId}
+              onChange={(e) => handleArticleTypeChange(e.target.value)}
+              className="rounded-md border border-zinc-300 px-2 py-1 text-xs focus:border-zinc-500 focus:outline-none"
+            >
+              <option value="">Sin tipo de artículo</option>
+              {articleTypes.map((at) => (
+                <option key={at.id} value={at.id}>
+                  {at.name}
+                </option>
+              ))}
+            </select>
+            <label className="flex items-center gap-1 text-xs text-zinc-600">
+              <input
+                type="checkbox"
+                checked={requiresNumber}
+                onChange={(e) => setRequiresNumber(e.target.checked)}
+              />
+              Lleva número
+            </label>
+            <label className="flex items-center gap-1 text-xs text-zinc-600">
+              <input type="checkbox" checked={requiresName} onChange={(e) => setRequiresName(e.target.checked)} />
+              Lleva nombre
+            </label>
+          </div>
+        )}
+        <div className="grid grid-cols-[1fr_5.5rem_4rem_auto] items-center gap-1.5">
+          <input
+            value={description}
+            onChange={(e) => setDescription(e.target.value)}
+            placeholder="Ej: Camiseta manga corta"
+            className="rounded-md border border-zinc-300 px-2 py-1.5 text-sm focus:border-zinc-500 focus:outline-none"
+          />
+          <input
+            type="number"
+            step="0.01"
+            value={unitPrice || ""}
+            onChange={(e) => setUnitPrice(Number(e.target.value) || 0)}
+            placeholder="Precio"
+            className="rounded-md border border-zinc-300 px-2 py-1.5 text-sm focus:border-zinc-500 focus:outline-none"
+          />
+          <input
+            type="number"
+            value={quantity}
+            onChange={(e) => setQuantity(Number(e.target.value) || 0)}
+            placeholder="Cant."
+            className="rounded-md border border-zinc-300 px-2 py-1.5 text-sm focus:border-zinc-500 focus:outline-none"
+          />
+          <button
+            type="button"
+            onClick={addItem}
+            className="flex items-center justify-center rounded-md bg-zinc-900 p-1.5 text-white hover:bg-zinc-800"
+            aria-label="Agregar artículo"
+          >
+            <Plus className="h-4 w-4" />
+          </button>
+        </div>
       </div>
 
       <div className="rounded-md bg-zinc-50 px-3 py-2.5 text-sm">
@@ -159,10 +233,12 @@ function ItemsCart({ items, onChange }: { items: CartItem[]; onChange: (items: C
 
 export function NewQuoteModal({
   clients,
+  articleTypes,
   open,
   onClose,
 }: {
   clients: Client[];
+  articleTypes: ArticleType[];
   open: boolean;
   onClose: () => void;
 }) {
@@ -236,7 +312,14 @@ export function NewQuoteModal({
         id="new-quote-form"
         action={createQuoteWithItems.bind(
           null,
-          items.map(({ description, unitPrice, quantity }) => ({ description, unitPrice, quantity }))
+          items.map(({ description, unitPrice, quantity, articleTypeId, requiresNumber, requiresName }) => ({
+            description,
+            unitPrice,
+            quantity,
+            articleTypeId,
+            requiresNumber,
+            requiresName,
+          }))
         )}
         onSubmit={handleSubmit}
         className="flex flex-col gap-4"
@@ -381,7 +464,7 @@ export function NewQuoteModal({
           </span>
         </div>
 
-        <ItemsCart items={items} onChange={setItems} />
+        <ItemsCart items={items} onChange={setItems} articleTypes={articleTypes} />
 
         <div className="grid gap-3 sm:grid-cols-2">
           <Input

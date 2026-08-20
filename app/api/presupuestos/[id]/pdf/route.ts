@@ -46,6 +46,28 @@ export async function GET(_req: Request, { params }: { params: Promise<{ id: str
     return NextResponse.json({ error: "Presupuesto no encontrado" }, { status: 404 });
   }
 
+  // Guía de talles: un bloque por cada tipo de artículo distinto presente en
+  // este presupuesto (si tiene talles configurados con medidas).
+  const articleTypeIds = Array.from(
+    new Set((items ?? []).map((i) => i.article_type_id).filter((v): v is string => !!v))
+  );
+  let sizeGuides: { name: string; sizes: { label: string; measurements: string | null }[] }[] = [];
+  if (articleTypeIds.length > 0) {
+    const { data: articleTypes } = await supabase
+      .from("article_types")
+      .select("id, name, article_type_sizes(id, label, measurements, sort_order)")
+      .in("id", articleTypeIds);
+    sizeGuides = (articleTypes ?? [])
+      .map((at) => ({
+        name: at.name,
+        sizes: (at.article_type_sizes as unknown as { label: string; measurements: string | null; sort_order: number }[])
+          .slice()
+          .sort((a, b) => a.sort_order - b.sort_order)
+          .filter((s) => s.measurements),
+      }))
+      .filter((g) => g.sizes.length > 0);
+  }
+
   const client = quote.clients as unknown as {
     name: string;
     contact_name: string | null;
@@ -90,6 +112,7 @@ export async function GET(_req: Request, { params }: { params: Promise<{ id: str
         unitPrice: Number(item.unit_price),
         quantity: item.quantity,
       })),
+      sizeGuides,
       client: {
         name: client?.name ?? "—",
         contactName: client?.contact_name ?? null,

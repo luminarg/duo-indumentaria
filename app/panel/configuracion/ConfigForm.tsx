@@ -7,6 +7,7 @@ import { Input, Textarea } from "../../components/ui/Input";
 import { Button } from "../../components/ui/Button";
 import { SlidersManager } from "./SlidersManager";
 import { FeatureCardsManager } from "./FeatureCardsManager";
+import { ArticleTypesManager } from "./ArticleTypesManager";
 import { SeoGuide } from "./SeoGuide";
 import { cn } from "@/lib/cn";
 
@@ -56,8 +57,18 @@ const TABS = [
   { key: "home", label: "Home" },
   { key: "contacto", label: "Contacto" },
   { key: "presupuestos", label: "Presupuestos" },
+  { key: "talles", label: "Talles" },
   { key: "seo", label: "SEO" },
 ] as const;
+
+type ArticleTypeSize = { id: string; label: string; measurements: string | null };
+type ArticleType = {
+  id: string;
+  name: string;
+  requires_number: boolean;
+  requires_name: boolean;
+  sizes: ArticleTypeSize[];
+};
 
 type TabKey = (typeof TABS)[number]["key"];
 
@@ -65,10 +76,12 @@ export function ConfigForm({
   settings,
   sliders,
   features,
+  articleTypes,
 }: {
   settings: Settings;
   sliders: Slider[];
   features: Feature[];
+  articleTypes: ArticleType[];
 }) {
   const [tab, setTab] = useState<TabKey>("negocio");
   const [isPending, startTransition] = useTransition();
@@ -349,6 +362,12 @@ export function ConfigForm({
       <div className={cn("flex flex-col gap-8", tab !== "home" && "hidden")}>
         <FeatureCardsManager features={features} />
         <SlidersManager sliders={sliders} />
+      </div>
+
+      {/* También fuera del <form>: cada tipo de artículo y cada talle tiene
+          su propio form (crear/editar/borrar). Solo en la pestaña Talles. */}
+      <div className={cn(tab !== "talles" && "hidden")}>
+        <ArticleTypesManager articleTypes={articleTypes} />
       </div>
     </div>
   );

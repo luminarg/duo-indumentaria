@@ -187,3 +187,87 @@ export async function deleteFeature(id: string) {
   revalidatePath("/panel/configuracion");
   revalidatePath("/");
 }
+
+// ---------------------------------------------------------------------------
+// Tipos de artículo (remera, pantalón, buzo...) + su guía de talles — se usan
+// al cargar artículos en un presupuesto (para saber si llevan número/nombre
+// por defecto) y al armar el formulario público del pedido (para mostrar
+// talles con medidas en vez de un campo de texto libre).
+// ---------------------------------------------------------------------------
+
+export async function createArticleType(formData: FormData) {
+  await requireTeamMember();
+  const supabase = await createClient();
+
+  const name = String(formData.get("name") || "").trim();
+  if (!name) throw new Error("Falta el nombre del tipo de artículo");
+
+  const { error } = await supabase.from("article_types").insert({
+    name,
+    requires_number: formData.get("requires_number") === "on",
+    requires_name: formData.get("requires_name") === "on",
+    sort_order: Number(formData.get("sort_order") || 0),
+  });
+  if (error) throw new Error("No se pudo crear el tipo de artículo: " + error.message);
+
+  revalidatePath("/panel/configuracion");
+}
+
+export async function updateArticleType(id: string, formData: FormData) {
+  await requireTeamMember();
+  const supabase = await createClient();
+
+  const name = String(formData.get("name") || "").trim();
+  if (!name) throw new Error("Falta el nombre del tipo de artículo");
+
+  const { error } = await supabase
+    .from("article_types")
+    .update({
+      name,
+      requires_number: formData.get("requires_number") === "on",
+      requires_name: formData.get("requires_name") === "on",
+    })
+    .eq("id", id);
+  if (error) throw new Error("No se pudo guardar el tipo de artículo: " + error.message);
+
+  revalidatePath("/panel/configuracion");
+}
+
+export async function deleteArticleType(id: string) {
+  await requireTeamMember();
+  const supabase = await createClient();
+  const { error } = await supabase.from("article_types").delete().eq("id", id);
+  if (error) throw new Error("No se pudo borrar el tipo de artículo: " + error.message);
+  revalidatePath("/panel/configuracion");
+}
+
+export async function createArticleTypeSize(articleTypeId: string, formData: FormData) {
+  await requireTeamMember();
+  const supabase = await createClient();
+
+  const label = String(formData.get("label") || "").trim();
+  if (!label) throw new Error("Falta el talle");
+
+  const { data: existing } = await supabase
+    .from("article_type_sizes")
+    .select("id")
+    .eq("article_type_id", articleTypeId);
+
+  const { error } = await supabase.from("article_type_sizes").insert({
+    article_type_id: articleTypeId,
+    label,
+    measurements: String(formData.get("measurements") || "").trim() || null,
+    sort_order: existing?.length ?? 0,
+  });
+  if (error) throw new Error("No se pudo agregar el talle: " + error.message);
+
+  revalidatePath("/panel/configuracion");
+}
+
+export async function deleteArticleTypeSize(id: string) {
+  await requireTeamMember();
+  const supabase = await createClient();
+  const { error } = await supabase.from("article_type_sizes").delete().eq("id", id);
+  if (error) throw new Error("No se pudo borrar el talle: " + error.message);
+  revalidatePath("/panel/configuracion");
+}

@@ -71,6 +71,56 @@ export default async function PedidoPublicoPage({
     })
   );
 
+  // Qué debe completar el cliente por cada artículo (definido por el admin
+  // al generar el pedido) + la guía de talles de cada tipo de artículo, y lo
+  // que el cliente ya haya cargado antes (por si vuelve a editar).
+  const [{ data: requirementsRaw }, { data: existingItems }] = await Promise.all([
+    supabase
+      .from("order_article_requirements")
+      .select("*, article_types(id, name, article_type_sizes(id, label, measurements, sort_order))")
+      .eq("order_id", order.id)
+      .order("sort_order", { ascending: true }),
+    supabase.from("order_items").select("*").eq("order_id", order.id),
+  ]);
+
+  const requirements = (requirementsRaw ?? []).map((r) => {
+    const articleType = r.article_types as unknown as {
+      id: string;
+      name: string;
+      article_type_sizes: { id: string; label: string; measurements: string | null; sort_order: number }[];
+    } | null;
+    return {
+      id: r.id,
+      description: r.description,
+      requiresNumber: r.requires_number,
+      requiresName: r.requires_name,
+      quantityQuoted: r.quantity_quoted,
+      sizes: (articleType?.article_type_sizes ?? [])
+        .slice()
+        .sort((a, b) => a.sort_order - b.sort_order)
+        .map((s) => ({ label: s.label, measurements: s.measurements })),
+      existingItems: (existingItems ?? [])
+        .filter((it) => it.requirement_id === r.id)
+        .map((it) => ({
+          size: it.size_label ?? "",
+          individualName: it.individual_name ?? "",
+          individualNumber: it.individual_number ?? "",
+          quantity: it.quantity,
+        })),
+    };
+  });
+
+  // Prendas cargadas sin pasar por un artículo del presupuesto (pedidos
+  // viejos, de antes de esta función) — se muestran igual, en modo libre.
+  const legacyItems = (existingItems ?? [])
+    .filter((it) => !it.requirement_id)
+    .map((it) => ({
+      size: it.size_label ?? "",
+      individualName: it.individual_name ?? "",
+      individualNumber: it.individual_number ?? "",
+      quantity: it.quantity,
+    }));
+
   return (
     <div className="mx-auto max-w-2xl px-6 py-16">
       {logoUrl && (
@@ -86,7 +136,14 @@ export default async function PedidoPublicoPage({
         Completá los datos de tu pedido. Podés volver a este link para revisar
         o corregir mientras no esté confirmado.
       </p>
-      <PedidoForm orderId={order.id} token={token} defaultValues={order} resources={resourcesWithUrls} />
+      <PedidoForm
+        orderId={order.id}
+        token={token}
+        defaultValues={order}
+        resources={resourcesWithUrls}
+        requirements={requirements}
+        legacyItems={legacyItems}
+      />
     </div>
   );
 }
