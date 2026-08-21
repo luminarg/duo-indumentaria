@@ -85,7 +85,9 @@ function ItemsCart({
         <span className="text-xs font-medium text-zinc-500">Artículos</span>
         <p className="text-[11px] text-zinc-400">
           Cada artículo con su precio unitario y cantidad — el total del presupuesto sale de la suma de
-          todos. Podés corregir cantidad o precio tocando el valor en la tabla.
+          todos. Podés corregir cantidad o precio tocando el valor en la tabla. Tip: dejá cantidad en 0
+          para mandar un "presupuesto abierto" — el cliente va a poder cargar la cantidad que necesita
+          desde su link.
         </p>
       </div>
 

@@ -166,7 +166,8 @@ export function QuoteItemsManager({
     <Card>
       <h2 className="mb-1 text-sm font-semibold text-zinc-900">Artículos</h2>
       <p className="mb-3 text-xs text-zinc-500">
-        El total y la seña se calculan solos a partir de estos artículos.
+        El total y la seña se calculan solos a partir de estos artículos. Tip: dejá cantidad en 0
+        para que el cliente la defina desde su link (presupuesto abierto).
       </p>
 
       {error && <div className="mb-3 rounded-md bg-red-50 px-3 py-2 text-xs text-red-800">{error}</div>}

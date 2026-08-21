@@ -2,6 +2,7 @@
 
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
+import type { SupabaseClient } from "@supabase/supabase-js";
 import { createClient } from "@/lib/supabase/server";
 
 async function requireTeamMember() {
@@ -168,8 +169,11 @@ export async function updateQuote(quoteId: string, formData: FormData) {
 
 // Recalcula total/subtotal/seña del presupuesto a partir de la suma de sus
 // artículos — se llama después de cualquier alta/edición/borrado de ítem.
-async function recalcQuoteTotals(quoteId: string) {
-  const supabase = await createClient();
+// Exportada porque también la usa el link público (app/presupuesto/[token])
+// cuando el cliente confirma sus cantidades.
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+export async function recalcQuoteTotals(quoteId: string, supabaseClient?: SupabaseClient<any, any, any>) {
+  const supabase = supabaseClient ?? (await createClient());
 
   const [{ data: items }, { data: quote }] = await Promise.all([
     supabase.from("quote_items").select("unit_price, quantity").eq("quote_id", quoteId),

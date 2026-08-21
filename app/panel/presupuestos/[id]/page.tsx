@@ -4,6 +4,7 @@ import { createClient } from "@/lib/supabase/server";
 import { PageHeader } from "../../../components/ui/PageHeader";
 import { Card } from "../../../components/ui/Card";
 import { Button } from "../../../components/ui/Button";
+import { ShareQuoteLink } from "../../../components/ui/ShareQuoteLink";
 import { QuoteDetail } from "./QuoteDetail";
 import { QuoteItemsManager } from "./QuoteItemsManager";
 import { DeleteQuoteButton } from "./DeleteQuoteButton";
@@ -18,7 +19,7 @@ export default async function QuoteDetailPage({
   const supabase = await createClient();
 
   const [{ data: quote }, { data: items }, { data: articleTypes }] = await Promise.all([
-    supabase.from("quotes").select("*, clients(name)").eq("id", id).single(),
+    supabase.from("quotes").select("*, clients(name, phone)").eq("id", id).single(),
     supabase.from("quote_items").select("*").eq("quote_id", id).order("sort_order", { ascending: true }),
     supabase
       .from("article_types")
@@ -28,7 +29,11 @@ export default async function QuoteDetailPage({
 
   if (!quote) notFound();
 
-  const clientName = (quote.clients as unknown as { name: string } | null)?.name ?? "—";
+  const client = quote.clients as unknown as { name: string; phone: string | null } | null;
+  const clientName = client?.name ?? "—";
+
+  const siteUrl = process.env.NEXT_PUBLIC_SITE_URL || "http://localhost:3000";
+  const quoteLink = `${siteUrl}/presupuesto/${quote.public_token}`;
 
   return (
     <div>
@@ -37,6 +42,7 @@ export default async function QuoteDetailPage({
         description={`Cliente: ${clientName}`}
         action={
           <div className="flex items-center gap-2">
+            <ShareQuoteLink link={quoteLink} quoteNumber={quote.quote_number} contactPhone={client?.phone} />
             <a href={`/api/presupuestos/${quote.id}/pdf`} target="_blank" rel="noopener noreferrer">
               <Button type="button" variant="secondary">
                 Descargar PDF

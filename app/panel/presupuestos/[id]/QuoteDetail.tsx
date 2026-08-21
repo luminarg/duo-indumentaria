@@ -19,6 +19,7 @@ type Quote = {
   notes: string | null;
   status: string;
   accent_color: string | null;
+  client_confirmed_at: string | null;
 };
 
 function formatMoney(value: number) {
@@ -50,6 +51,17 @@ export function QuoteDetail({ quote }: { quote: Quote }) {
 
   return (
     <Card>
+      <div
+        className={
+          "mb-3 rounded-md px-3 py-2 text-xs font-medium " +
+          (quote.client_confirmed_at ? "bg-green-50 text-green-800" : "bg-zinc-100 text-zinc-500")
+        }
+      >
+        {quote.client_confirmed_at
+          ? `El cliente confirmó cantidades el ${new Date(quote.client_confirmed_at).toLocaleString("es-AR")}`
+          : "El cliente todavía no confirmó cantidades desde su link"}
+      </div>
+
       {error && <div className="mb-3 rounded-md bg-red-50 px-4 py-3 text-sm text-red-800">{error}</div>}
       {message && <div className="mb-3 rounded-md bg-green-50 px-4 py-3 text-sm text-green-800">{message}</div>}
 
