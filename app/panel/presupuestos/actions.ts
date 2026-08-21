@@ -278,6 +278,7 @@ export async function generateOrderFromQuote(
     requiresNumber: boolean;
     requiresName: boolean;
     quantityQuoted: number;
+    unitPrice: number;
   }[],
   quoteId: string
 ) {
@@ -324,6 +325,7 @@ export async function generateOrderFromQuote(
         requires_number: r.requiresNumber,
         requires_name: r.requiresName,
         quantity_quoted: r.quantityQuoted,
+        unit_price: r.unitPrice,
         sort_order: i,
       }))
     );

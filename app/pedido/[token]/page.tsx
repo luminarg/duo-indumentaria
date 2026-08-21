@@ -83,6 +83,14 @@ export default async function PedidoPublicoPage({
     supabase.from("order_items").select("*").eq("order_id", order.id),
   ]);
 
+  // El % de seña vive en el presupuesto que originó este pedido.
+  const { data: sourceQuote } = await supabase
+    .from("quotes")
+    .select("deposit_percent")
+    .eq("order_id", order.id)
+    .maybeSingle();
+  const depositPercent = sourceQuote ? Number(sourceQuote.deposit_percent) : null;
+
   const requirements = (requirementsRaw ?? []).map((r) => {
     const articleType = r.article_types as unknown as {
       id: string;
@@ -95,6 +103,7 @@ export default async function PedidoPublicoPage({
       requiresNumber: r.requires_number,
       requiresName: r.requires_name,
       quantityQuoted: r.quantity_quoted,
+      unitPrice: Number(r.unit_price),
       sizes: (articleType?.article_type_sizes ?? [])
         .slice()
         .sort((a, b) => a.sort_order - b.sort_order)
@@ -143,6 +152,7 @@ export default async function PedidoPublicoPage({
         resources={resourcesWithUrls}
         requirements={requirements}
         legacyItems={legacyItems}
+        depositPercent={depositPercent}
       />
     </div>
   );

@@ -21,14 +21,26 @@ export default async function OrderDetailPage({
       supabase.from("order_technical_details").select("*").eq("order_id", id).maybeSingle(),
       supabase.from("order_items").select("*").eq("order_id", id),
       supabase.from("order_resources").select("*").eq("order_id", id).order("uploaded_at", { ascending: false }),
-      supabase.from("order_article_requirements").select("id, description").eq("order_id", id),
+      supabase.from("order_article_requirements").select("id, description, unit_price").eq("order_id", id),
     ]);
 
   if (!order) notFound();
 
-  // Mapa id de requisito → descripción del artículo, para mostrar qué
-  // artículo del presupuesto corresponde a cada prenda cargada.
-  const articleByRequirementId = Object.fromEntries((requirements ?? []).map((r) => [r.id, r.description]));
+  // El % de seña vive en el presupuesto que originó este pedido, no en el
+  // pedido en sí — lo buscamos por la relación inversa quotes.order_id.
+  const { data: sourceQuote } = await supabase
+    .from("quotes")
+    .select("deposit_percent")
+    .eq("order_id", id)
+    .maybeSingle();
+  const depositPercent = sourceQuote ? Number(sourceQuote.deposit_percent) : null;
+
+  // Mapa id de requisito → descripción + precio unitario del artículo, para
+  // mostrar qué artículo del presupuesto corresponde a cada prenda cargada
+  // y poder calcular subtotales/total.
+  const requirementInfo = Object.fromEntries(
+    (requirements ?? []).map((r) => [r.id, { description: r.description, unitPrice: Number(r.unit_price) }])
+  );
 
   // Los recursos están en un bucket privado — generamos URLs firmadas
   // (1 hora) solo para esta vista, en vez de exponerlos públicamente.
@@ -71,7 +83,8 @@ export default async function OrderDetailPage({
         details={details}
         items={items ?? []}
         resources={resourcesWithUrls}
-        articleByRequirementId={articleByRequirementId}
+        requirementInfo={requirementInfo}
+        depositPercent={depositPercent}
       />
     </div>
   );

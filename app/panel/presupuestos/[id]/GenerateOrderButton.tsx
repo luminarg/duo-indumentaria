@@ -9,6 +9,7 @@ type QuoteItem = {
   id: string;
   description: string;
   quantity: number;
+  unit_price: number;
   article_type_id: string | null;
   requires_number: boolean;
   requires_name: boolean;
@@ -20,10 +21,15 @@ type RequirementDraft = {
   itemId: string;
   description: string;
   quantity: number;
+  unitPrice: number;
   articleTypeId: string | null;
   requiresNumber: boolean;
   requiresName: boolean;
 };
+
+function formatMoney(value: number) {
+  return `$${value.toLocaleString("es-AR", { minimumFractionDigits: 2 })}`;
+}
 
 export function GenerateOrderButton({ quoteId, items, articleTypes }: { quoteId: string; items: QuoteItem[]; articleTypes: ArticleType[] }) {
   const [open, setOpen] = useState(false);
@@ -32,6 +38,7 @@ export function GenerateOrderButton({ quoteId, items, articleTypes }: { quoteId:
       itemId: i.id,
       description: i.description,
       quantity: i.quantity,
+      unitPrice: Number(i.unit_price),
       articleTypeId: i.article_type_id,
       requiresNumber: i.requires_number,
       requiresName: i.requires_name,
@@ -76,6 +83,7 @@ export function GenerateOrderButton({ quoteId, items, articleTypes }: { quoteId:
               requiresNumber: d.requiresNumber,
               requiresName: d.requiresName,
               quantityQuoted: d.quantity,
+              unitPrice: d.unitPrice,
             })),
             quoteId
           )}
@@ -88,7 +96,9 @@ export function GenerateOrderButton({ quoteId, items, articleTypes }: { quoteId:
             <div key={d.itemId} className="rounded-md border border-zinc-200 p-3">
               <div className="flex items-center justify-between gap-2">
                 <span className="text-sm font-medium text-zinc-900">{d.description}</span>
-                <span className="text-xs text-zinc-400">Cant. {d.quantity}</span>
+                <span className="text-xs text-zinc-400">
+                  {formatMoney(d.unitPrice)} c/u · Cant. {d.quantity}
+                </span>
               </div>
               {articleTypeName(d.articleTypeId) && (
                 <p className="mt-0.5 text-xs text-zinc-400">{articleTypeName(d.articleTypeId)}</p>

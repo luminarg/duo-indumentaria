@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useTransition } from "react";
+import { useMemo, useState, useTransition } from "react";
 import { ImageUp } from "lucide-react";
 import { submitPedido, uploadPedidoResource, deletePedidoResource, type SubmitPedidoInput } from "./actions";
 
@@ -14,9 +14,18 @@ type Requirement = {
   requiresNumber: boolean;
   requiresName: boolean;
   quantityQuoted: number | null;
+  unitPrice: number;
   sizes: SizeGuideEntry[];
   existingItems: Row[];
 };
+
+function formatMoney(value: number) {
+  return `$${value.toLocaleString("es-AR", { minimumFractionDigits: 2 })}`;
+}
+
+function rowsTotal(rows: Row[]) {
+  return rows.reduce((sum, r) => sum + r.quantity, 0);
+}
 
 type Resource = {
   id: string;
@@ -99,6 +108,10 @@ function IndividualRequirementFields({
   return (
     <fieldset className="flex flex-col gap-3 rounded-md border border-zinc-200 p-3">
       <legend className="px-1 text-sm font-medium text-zinc-900">{req.description}</legend>
+      <div className="-mt-1 flex items-center justify-between text-xs text-zinc-500">
+        <span>{formatMoney(req.unitPrice)} c/u</span>
+        <span className="font-medium text-zinc-700">Subtotal: {formatMoney(req.unitPrice * rowsTotal(rows))}</span>
+      </div>
       <SizeGuide sizes={req.sizes} />
       {rows.map((row, index) => (
         <div key={index} className="grid grid-cols-2 gap-2 rounded-md border border-zinc-200 p-3 sm:grid-cols-4">
@@ -189,6 +202,10 @@ function AggregateRequirementFields({
     return (
       <fieldset className="flex flex-col gap-3 rounded-md border border-zinc-200 p-3">
         <legend className="px-1 text-sm font-medium text-zinc-900">{req.description}</legend>
+        <div className="-mt-1 flex items-center justify-between text-xs text-zinc-500">
+          <span>{formatMoney(req.unitPrice)} c/u</span>
+          <span className="font-medium text-zinc-700">Subtotal: {formatMoney(req.unitPrice * rowsTotal(rows))}</span>
+        </div>
         <SizeGuide sizes={req.sizes} />
         <p className="text-xs text-zinc-500">Indicá cuántas unidades necesitás de cada talle.</p>
         <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">
@@ -219,6 +236,10 @@ function AggregateRequirementFields({
   return (
     <fieldset className="flex flex-col gap-3 rounded-md border border-zinc-200 p-3">
       <legend className="px-1 text-sm font-medium text-zinc-900">{req.description}</legend>
+      <div className="-mt-1 flex items-center justify-between text-xs text-zinc-500">
+        <span>{formatMoney(req.unitPrice)} c/u</span>
+        <span className="font-medium text-zinc-700">Subtotal: {formatMoney(req.unitPrice * rowsTotal(rows))}</span>
+      </div>
       <p className="text-xs text-zinc-500">Indicá talle y cantidad.</p>
       {rows.map((row, index) => (
         <div key={index} className="grid grid-cols-2 gap-2">
@@ -259,6 +280,7 @@ export function PedidoForm({
   resources,
   requirements,
   legacyItems,
+  depositPercent,
 }: {
   orderId: string;
   token: string;
@@ -272,6 +294,7 @@ export function PedidoForm({
   resources: Resource[];
   requirements: Requirement[];
   legacyItems: Row[];
+  depositPercent: number | null;
 }) {
   const [rowsByRequirement, setRowsByRequirement] = useState<Record<string, Row[]>>(() =>
     Object.fromEntries(requirements.map((r) => [r.id, initRowsFor(r)]))
@@ -286,7 +309,16 @@ export function PedidoForm({
   const [notes, setNotes] = useState(defaultValues.general_notes ?? "");
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState(false);
+  const [confirmedTotals, setConfirmedTotals] = useState<{ total: number; depositAmount: number | null } | null>(
+    null
+  );
   const [isPending, startTransition] = useTransition();
+
+  const liveTotal = useMemo(
+    () => requirements.reduce((sum, req) => sum + req.unitPrice * rowsTotal(rowsByRequirement[req.id] ?? []), 0),
+    [requirements, rowsByRequirement]
+  );
+  const liveDeposit = depositPercent !== null ? (liveTotal * depositPercent) / 100 : null;
 
   const [uploadError, setUploadError] = useState<string | null>(null);
   const [isUploading, startUpload] = useTransition();
@@ -295,6 +327,7 @@ export function PedidoForm({
     e.preventDefault();
     setError(null);
     setSuccess(false);
+    setConfirmedTotals(null);
 
     const requirementPayload: SubmitPedidoInput["requirements"] = requirements.map((req) => {
       const rows = rowsByRequirement[req.id] ?? [];
@@ -340,6 +373,7 @@ export function PedidoForm({
         setError(result.error);
       } else {
         setSuccess(true);
+        setConfirmedTotals({ total: result.total, depositAmount: result.depositAmount });
       }
     });
   }
@@ -369,8 +403,23 @@ export function PedidoForm({
     <div className="mt-8 flex flex-col gap-6">
       <form onSubmit={handleSubmit} className="flex flex-col gap-6">
         {success && (
-          <div className="rounded-md bg-green-50 px-4 py-3 text-sm text-green-800">
-            ¡Listo! Guardamos tu pedido. Te vamos a contactar con el presupuesto.
+          <div className="rounded-md bg-green-50 px-4 py-4 text-sm text-green-800">
+            <p className="font-medium">¡Listo! Guardamos tu pedido.</p>
+            {confirmedTotals && (
+              <>
+                <div className="mt-3 flex items-center justify-between">
+                  <span>Total</span>
+                  <span className="text-base font-semibold">{formatMoney(confirmedTotals.total)}</span>
+                </div>
+                {confirmedTotals.depositAmount !== null && depositPercent !== null && (
+                  <div className="mt-1 flex items-center justify-between">
+                    <span>Seña ({depositPercent}%)</span>
+                    <span className="text-base font-semibold">{formatMoney(confirmedTotals.depositAmount)}</span>
+                  </div>
+                )}
+              </>
+            )}
+            <p className="mt-3 text-xs text-green-700">Te vamos a contactar para coordinar la seña.</p>
           </div>
         )}
         {error && (
@@ -507,6 +556,21 @@ export function PedidoForm({
           value={notes}
           onChange={(e) => setNotes(e.target.value)}
         />
+
+        {liveTotal > 0 && (
+          <div className="rounded-md bg-zinc-50 px-4 py-3 text-sm">
+            <div className="flex items-center justify-between font-semibold text-zinc-900">
+              <span>Total</span>
+              <span>{formatMoney(liveTotal)}</span>
+            </div>
+            {liveDeposit !== null && (
+              <div className="mt-1 flex items-center justify-between text-zinc-600">
+                <span>Seña ({depositPercent}%)</span>
+                <span>{formatMoney(liveDeposit)}</span>
+              </div>
+            )}
+          </div>
+        )}
 
         <button
           type="submit"

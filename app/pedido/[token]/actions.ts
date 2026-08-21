@@ -102,8 +102,23 @@ export async function submitPedido(input: SubmitPedidoInput) {
     }
   }
 
+  // Calculamos el total real a partir de lo que el cliente acaba de cargar
+  // (puede diferir de lo cotizado si cambió la composición de talles), para
+  // mostrarle un resumen con total y seña.
+  const [{ data: requirementsData }, { data: sourceQuote }] = await Promise.all([
+    supabase.from("order_article_requirements").select("id, unit_price").eq("order_id", order.id),
+    supabase.from("quotes").select("deposit_percent").eq("order_id", order.id).maybeSingle(),
+  ]);
+  const priceByRequirement = Object.fromEntries((requirementsData ?? []).map((r) => [r.id, Number(r.unit_price)]));
+  const total = itemsToInsert.reduce(
+    (sum, item) => sum + (item.requirement_id ? priceByRequirement[item.requirement_id] ?? 0 : 0) * item.quantity,
+    0
+  );
+  const depositPercent = sourceQuote ? Number(sourceQuote.deposit_percent) : null;
+  const depositAmount = depositPercent !== null ? (total * depositPercent) / 100 : null;
+
   revalidatePath(`/pedido/${data.token}`);
-  return { ok: true as const };
+  return { ok: true as const, total, depositPercent, depositAmount };
 }
 
 // ---------------------------------------------------------------------------

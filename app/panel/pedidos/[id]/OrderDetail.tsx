@@ -73,18 +73,24 @@ function isImage(name: string | null) {
   return !!name && /\.(png|jpe?g|webp|gif|svg)$/i.test(name);
 }
 
+function formatMoney(value: number) {
+  return `$${value.toLocaleString("es-AR", { minimumFractionDigits: 2 })}`;
+}
+
 export function OrderDetail({
   order,
   details,
   items,
   resources,
-  articleByRequirementId,
+  requirementInfo,
+  depositPercent,
 }: {
   order: Order;
   details: Details;
   items: Item[];
   resources: Resource[];
-  articleByRequirementId: Record<string, string>;
+  requirementInfo: Record<string, { description: string; unitPrice: number }>;
+  depositPercent: number | null;
 }) {
   const [isPending, startTransition] = useTransition();
   const [error, setError] = useState<string | null>(null);
@@ -249,30 +255,64 @@ export function OrderDetail({
       <Card>
         <h2 className="mb-3 text-sm font-semibold text-zinc-900">Prendas cargadas por el cliente</h2>
         {items.length > 0 ? (
-          <table className="w-full text-left text-sm">
-            <thead>
-              <tr className="border-b border-zinc-200 text-zinc-500">
-                <th className="py-2 pr-4">Artículo</th>
-                <th className="py-2 pr-4">Talle</th>
-                <th className="py-2 pr-4">Nombre</th>
-                <th className="py-2 pr-4">Número</th>
-                <th className="py-2 pr-4">Cant.</th>
-              </tr>
-            </thead>
-            <tbody>
-              {items.map((item) => (
-                <tr key={item.id} className="border-b border-zinc-100 last:border-0">
-                  <td className="py-2 pr-4 text-zinc-500">
-                    {(item.requirement_id && articleByRequirementId[item.requirement_id]) ?? "—"}
-                  </td>
-                  <td className="py-2 pr-4">{item.size_label ?? "—"}</td>
-                  <td className="py-2 pr-4">{item.individual_name ?? "—"}</td>
-                  <td className="py-2 pr-4">{item.individual_number ?? "—"}</td>
-                  <td className="py-2 pr-4">{item.quantity}</td>
+          <>
+            <table className="w-full text-left text-sm">
+              <thead>
+                <tr className="border-b border-zinc-200 text-zinc-500">
+                  <th className="py-2 pr-4">Artículo</th>
+                  <th className="py-2 pr-4">Talle</th>
+                  <th className="py-2 pr-4">Nombre</th>
+                  <th className="py-2 pr-4">Número</th>
+                  <th className="py-2 pr-4">Cant.</th>
+                  <th className="py-2 pr-4">Precio unit.</th>
+                  <th className="py-2 pr-4">Subtotal</th>
                 </tr>
-              ))}
-            </tbody>
-          </table>
+              </thead>
+              <tbody>
+                {items.map((item) => {
+                  const info = item.requirement_id ? requirementInfo[item.requirement_id] : null;
+                  const unitPrice = info?.unitPrice ?? 0;
+                  return (
+                    <tr key={item.id} className="border-b border-zinc-100 last:border-0">
+                      <td className="py-2 pr-4 text-zinc-500">{info?.description ?? "—"}</td>
+                      <td className="py-2 pr-4">{item.size_label ?? "—"}</td>
+                      <td className="py-2 pr-4">{item.individual_name ?? "—"}</td>
+                      <td className="py-2 pr-4">{item.individual_number ?? "—"}</td>
+                      <td className="py-2 pr-4">{item.quantity}</td>
+                      <td className="py-2 pr-4">{info ? formatMoney(unitPrice) : "—"}</td>
+                      <td className="py-2 pr-4 font-medium text-zinc-800">
+                        {info ? formatMoney(unitPrice * item.quantity) : "—"}
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+            {(() => {
+              const total = items.reduce((sum, item) => {
+                const unitPrice = item.requirement_id ? requirementInfo[item.requirement_id]?.unitPrice ?? 0 : 0;
+                return sum + unitPrice * item.quantity;
+              }, 0);
+              return (
+                <div className="mt-4 flex justify-end border-t border-zinc-200 pt-3">
+                  <div className="text-right">
+                    <div className="flex items-center gap-4 text-sm text-zinc-500">
+                      <span>Total</span>
+                      <span className="text-base font-semibold text-zinc-900">{formatMoney(total)}</span>
+                    </div>
+                    {depositPercent !== null && (
+                      <div className="mt-1 flex items-center gap-4 text-sm text-zinc-500">
+                        <span>Seña ({depositPercent}%)</span>
+                        <span className="text-base font-semibold text-zinc-900">
+                          {formatMoney((total * depositPercent) / 100)}
+                        </span>
+                      </div>
+                    )}
+                  </div>
+                </div>
+              );
+            })()}
+          </>
         ) : (
           <p className="text-sm text-zinc-400">
             El cliente todavía no cargó las prendas de su pedido.
