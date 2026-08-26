@@ -1,4 +1,4 @@
-import { Document, Page, Text, View } from "@react-pdf/renderer";
+import { Document, Page, Text, View, Image } from "@react-pdf/renderer";
 import { pdfStyles } from "./styles";
 import { BrandHeader } from "./BrandHeader";
 import { getReadableForeground } from "../color";
@@ -30,6 +30,7 @@ type QuotePdfProps = {
   };
   items: { description: string; unitPrice: number; quantity: number }[];
   sizeGuides?: { name: string; sizes: { label: string; measurements: string | null }[] }[];
+  mockupUrl?: string | null;
   client: {
     name: string;
     contactName: string | null;
@@ -47,7 +48,7 @@ function formatDate(iso: string) {
   return new Date(iso).toLocaleDateString("es-AR");
 }
 
-export function QuotePdfDocument({ business, quote, items, sizeGuides = [], client }: QuotePdfProps) {
+export function QuotePdfDocument({ business, quote, items, sizeGuides = [], mockupUrl, client }: QuotePdfProps) {
   const contactLine = [business.address, business.phone, business.email].filter(Boolean).join(" · ");
   const accent = business.secondaryColor || "#18181b";
   const accentText = getReadableForeground(accent);
@@ -71,6 +72,13 @@ export function QuotePdfDocument({ business, quote, items, sizeGuides = [], clie
         {business.headerText && (
           <View style={pdfStyles.section}>
             <Text>{business.headerText}</Text>
+          </View>
+        )}
+
+        {mockupUrl && (
+          <View style={pdfStyles.section}>
+            <Text style={pdfStyles.sectionTitle}>Mockup del diseño</Text>
+            <Image src={mockupUrl} style={{ maxWidth: 220, maxHeight: 220, objectFit: "contain" }} />
           </View>
         )}
 

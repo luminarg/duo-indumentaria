@@ -113,6 +113,7 @@ export async function GET(_req: Request, { params }: { params: Promise<{ id: str
         quantity: item.quantity,
       })),
       sizeGuides,
+      mockupUrl: quote.mockup_url,
       client: {
         name: client?.name ?? "—",
         contactName: client?.contact_name ?? null,

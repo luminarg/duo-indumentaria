@@ -143,3 +143,26 @@ export async function deleteOrderResource(resourceId: string, orderId: string, f
 
   revalidatePath(`/panel/pedidos/${orderId}`);
 }
+
+// Nota interna: solo el equipo la ve, nunca se muestra al cliente. Es de
+// solo alta (no hay update/delete acá a propósito) para mantener la
+// trazabilidad completa del pedido.
+export async function createOrderNote(orderId: string, body: string) {
+  const user = await requireTeamMember();
+  const supabase = await createClient();
+
+  const text = body.trim();
+  if (!text) throw new Error("Escribí algo antes de guardar");
+
+  const { data: profile } = await supabase.from("profiles").select("full_name").eq("id", user.id).single();
+
+  const { error } = await supabase.from("internal_notes").insert({
+    order_id: orderId,
+    author_id: user.id,
+    author_name: profile?.full_name ?? user.email ?? "Equipo",
+    body: text,
+  });
+  if (error) throw new Error("No se pudo guardar la nota: " + error.message);
+
+  revalidatePath(`/panel/pedidos/${orderId}`);
+}

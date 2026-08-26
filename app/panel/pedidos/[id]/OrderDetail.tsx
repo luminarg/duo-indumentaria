@@ -7,12 +7,14 @@ import {
   updateEstimatedDeliveryDate,
   uploadOrderResource,
   deleteOrderResource,
+  createOrderNote,
 } from "../actions";
 import { Card } from "../../../components/ui/Card";
 import { Input, Textarea, Select } from "../../../components/ui/Input";
 import { Button } from "../../../components/ui/Button";
 import { Badge } from "../../../components/ui/Badge";
 import { DeliveryBadge } from "../../../components/ui/DeliveryBadge";
+import { InternalNotes, type InternalNote } from "../../../components/ui/InternalNotes";
 
 type Order = {
   id: string;
@@ -84,6 +86,7 @@ export function OrderDetail({
   resources,
   requirementInfo,
   depositPercent,
+  notes,
 }: {
   order: Order;
   details: Details;
@@ -91,6 +94,7 @@ export function OrderDetail({
   resources: Resource[];
   requirementInfo: Record<string, { description: string; unitPrice: number }>;
   depositPercent: number | null;
+  notes: InternalNote[];
 }) {
   const [isPending, startTransition] = useTransition();
   const [error, setError] = useState<string | null>(null);
@@ -374,6 +378,8 @@ export function OrderDetail({
           </Button>
         </form>
       </Card>
+
+      <InternalNotes notes={notes} onAdd={(body) => createOrderNote(order.id, body)} />
     </div>
   );
 }

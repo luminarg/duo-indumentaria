@@ -4,6 +4,7 @@ import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { createClient } from "@/lib/supabase/server";
+import { createAdminClient } from "@/lib/supabase/admin";
 
 async function requireTeamMember() {
   const supabase = await createClient();
@@ -342,4 +343,60 @@ export async function generateOrderFromQuote(
   revalidatePath(`/panel/presupuestos/${quoteId}`);
   revalidatePath("/panel/pedidos");
   redirect(`/panel/pedidos/${order.id}`);
+}
+
+// Mockup opcional (PNG) que se embebe en el PDF del presupuesto — no es
+// obligatorio, sirve para mandarle al cliente una vista previa del diseño
+// junto con los precios.
+export async function uploadQuoteMockup(quoteId: string, formData: FormData) {
+  await requireTeamMember();
+  const admin = createAdminClient();
+
+  const file = formData.get("mockup") as File | null;
+  if (!file || file.size === 0) throw new Error("Falta la imagen");
+  if (file.size > 8 * 1024 * 1024) throw new Error("La imagen no puede pesar más de 8 MB");
+
+  const path = `quote-mockups/${quoteId}/${crypto.randomUUID()}.png`;
+  const { error: uploadError } = await admin.storage
+    .from("site-assets")
+    .upload(path, file, { contentType: file.type || "image/png", upsert: false });
+  if (uploadError) throw new Error("No se pudo subir la imagen: " + uploadError.message);
+
+  const { data } = admin.storage.from("site-assets").getPublicUrl(path);
+
+  const { error } = await admin.from("quotes").update({ mockup_url: data.publicUrl }).eq("id", quoteId);
+  if (error) throw new Error("No se pudo guardar el mockup: " + error.message);
+
+  revalidatePath(`/panel/presupuestos/${quoteId}`);
+}
+
+export async function removeQuoteMockup(quoteId: string) {
+  await requireTeamMember();
+  const supabase = await createClient();
+  const { error } = await supabase.from("quotes").update({ mockup_url: null }).eq("id", quoteId);
+  if (error) throw new Error("No se pudo quitar el mockup: " + error.message);
+  revalidatePath(`/panel/presupuestos/${quoteId}`);
+}
+
+// Nota interna: solo el equipo la ve, nunca se muestra al cliente (ni en el
+// PDF ni en el link público). Es de solo alta — no hay update/delete acá a
+// propósito, para mantener la trazabilidad completa del presupuesto.
+export async function createQuoteNote(quoteId: string, body: string) {
+  const user = await requireTeamMember();
+  const supabase = await createClient();
+
+  const text = body.trim();
+  if (!text) throw new Error("Escribí algo antes de guardar");
+
+  const { data: profile } = await supabase.from("profiles").select("full_name").eq("id", user.id).single();
+
+  const { error } = await supabase.from("internal_notes").insert({
+    quote_id: quoteId,
+    author_id: user.id,
+    author_name: profile?.full_name ?? user.email ?? "Equipo",
+    body: text,
+  });
+  if (error) throw new Error("No se pudo guardar la nota: " + error.message);
+
+  revalidatePath(`/panel/presupuestos/${quoteId}`);
 }

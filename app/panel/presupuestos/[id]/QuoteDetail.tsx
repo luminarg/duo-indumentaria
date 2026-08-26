@@ -1,10 +1,11 @@
 "use client";
 
 import { useState, useTransition } from "react";
-import { updateQuote } from "../actions";
+import { updateQuote, createQuoteNote } from "../actions";
 import { Card } from "../../../components/ui/Card";
 import { Input, Textarea, Select } from "../../../components/ui/Input";
 import { Button } from "../../../components/ui/Button";
+import { InternalNotes, type InternalNote } from "../../../components/ui/InternalNotes";
 
 type Quote = {
   id: string;
@@ -28,7 +29,7 @@ function formatMoney(value: number) {
 
 const STATUSES = ["borrador", "enviado", "aprobado", "vencido", "rechazado"];
 
-export function QuoteDetail({ quote }: { quote: Quote }) {
+export function QuoteDetail({ quote, notes }: { quote: Quote; notes: InternalNote[] }) {
   const [isPending, startTransition] = useTransition();
   const [error, setError] = useState<string | null>(null);
   const [message, setMessage] = useState<string | null>(null);
@@ -50,6 +51,7 @@ export function QuoteDetail({ quote }: { quote: Quote }) {
   }
 
   return (
+    <>
     <Card>
       <div
         className={
@@ -171,5 +173,8 @@ export function QuoteDetail({ quote }: { quote: Quote }) {
         </Button>
       </form>
     </Card>
+
+    <InternalNotes notes={notes} onAdd={(body) => createQuoteNote(quote.id, body)} />
+    </>
   );
 }

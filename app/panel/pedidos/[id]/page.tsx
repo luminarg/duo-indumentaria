@@ -15,13 +15,14 @@ export default async function OrderDetailPage({
   const { id } = await params;
   const supabase = await createClient();
 
-  const [{ data: order }, { data: details }, { data: items }, { data: resources }, { data: requirements }] =
+  const [{ data: order }, { data: details }, { data: items }, { data: resources }, { data: requirements }, { data: notes }] =
     await Promise.all([
       supabase.from("orders").select("*").eq("id", id).single(),
       supabase.from("order_technical_details").select("*").eq("order_id", id).maybeSingle(),
       supabase.from("order_items").select("*").eq("order_id", id),
       supabase.from("order_resources").select("*").eq("order_id", id).order("uploaded_at", { ascending: false }),
       supabase.from("order_article_requirements").select("id, description, unit_price").eq("order_id", id),
+      supabase.from("internal_notes").select("*").eq("order_id", id).order("created_at", { ascending: false }),
     ]);
 
   if (!order) notFound();
@@ -85,6 +86,7 @@ export default async function OrderDetailPage({
         resources={resourcesWithUrls}
         requirementInfo={requirementInfo}
         depositPercent={depositPercent}
+        notes={notes ?? []}
       />
     </div>
   );

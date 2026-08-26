@@ -22,7 +22,7 @@ export default async function PresupuestoPublicoPage({
 
   const { data: quote, error } = await supabase
     .from("quotes")
-    .select("id, quote_number, status, total, deposit_amount, deposit_percent, order_id")
+    .select("id, quote_number, status, total, deposit_amount, deposit_percent, order_id, mockup_url")
     .eq("public_token", token)
     .single();
 
@@ -83,6 +83,15 @@ export default async function PresupuestoPublicoPage({
         Revisá y ajustá las cantidades que necesitás de cada artículo. Podés volver a este link
         para corregir mientras no confirmemos tu pedido.
       </p>
+
+      {quote.mockup_url && (
+        // eslint-disable-next-line @next/next/no-img-element
+        <img
+          src={quote.mockup_url}
+          alt="Mockup del diseño"
+          className="mt-4 max-h-64 w-full rounded-lg border border-zinc-200 object-contain"
+        />
+      )}
 
       {(items ?? []).length === 0 ? (
         <p className="mt-8 text-sm text-zinc-400">Todavía no cargamos los artículos de este presupuesto.</p>

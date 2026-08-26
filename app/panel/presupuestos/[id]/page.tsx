@@ -7,6 +7,7 @@ import { Button } from "../../../components/ui/Button";
 import { ShareQuoteLink } from "../../../components/ui/ShareQuoteLink";
 import { QuoteDetail } from "./QuoteDetail";
 import { QuoteItemsManager } from "./QuoteItemsManager";
+import { QuoteMockup } from "./QuoteMockup";
 import { DeleteQuoteButton } from "./DeleteQuoteButton";
 import { GenerateOrderButton } from "./GenerateOrderButton";
 
@@ -18,13 +19,14 @@ export default async function QuoteDetailPage({
   const { id } = await params;
   const supabase = await createClient();
 
-  const [{ data: quote }, { data: items }, { data: articleTypes }] = await Promise.all([
+  const [{ data: quote }, { data: items }, { data: articleTypes }, { data: notes }] = await Promise.all([
     supabase.from("quotes").select("*, clients(name, phone)").eq("id", id).single(),
     supabase.from("quote_items").select("*").eq("quote_id", id).order("sort_order", { ascending: true }),
     supabase
       .from("article_types")
       .select("id, name, requires_number, requires_name")
       .order("sort_order", { ascending: true }),
+    supabase.from("internal_notes").select("*").eq("quote_id", id).order("created_at", { ascending: false }),
   ]);
 
   if (!quote) notFound();
@@ -54,7 +56,9 @@ export default async function QuoteDetailPage({
       />
 
       <div className="flex max-w-2xl flex-col gap-6">
-        <QuoteDetail quote={quote} />
+        <QuoteDetail quote={quote} notes={notes ?? []} />
+
+        <QuoteMockup quoteId={quote.id} mockupUrl={quote.mockup_url} />
 
         <QuoteItemsManager quoteId={quote.id} items={items ?? []} articleTypes={articleTypes ?? []} />
 
