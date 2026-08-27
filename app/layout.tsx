@@ -21,7 +21,7 @@ export async function generateMetadata(): Promise<Metadata> {
   const supabase = await createClient();
   const { data: settings } = await supabase
     .from("business_settings")
-    .select("business_name, favicon_url, seo_title, seo_description, seo_keywords, seo_og_image_url")
+    .select("business_name, favicon_url, logo_url, seo_title, seo_description, seo_keywords, seo_og_image_url")
     .eq("id", 1)
     .single();
 
@@ -30,7 +30,10 @@ export async function generateMetadata(): Promise<Metadata> {
   const description =
     settings?.seo_description || "Indumentaria deportiva personalizada — pedidos, presupuestos y producción.";
   const siteUrl = process.env.NEXT_PUBLIC_SITE_URL || "http://localhost:3000";
-  const ogImage = settings?.seo_og_image_url || undefined;
+  // Si no cargaste una imagen específica para compartir en redes, usamos el
+  // logo del negocio — así nunca queda sin imagen (y no muestra el ícono
+  // genérico de Vercel de fallback).
+  const ogImage = settings?.seo_og_image_url || settings?.logo_url || undefined;
 
   return {
     metadataBase: new URL(siteUrl),

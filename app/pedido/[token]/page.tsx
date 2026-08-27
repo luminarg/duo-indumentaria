@@ -83,13 +83,14 @@ export default async function PedidoPublicoPage({
     supabase.from("order_items").select("*").eq("order_id", order.id),
   ]);
 
-  // El % de seña vive en el presupuesto que originó este pedido.
+  // El % de seña y el mockup viven en el presupuesto que originó este pedido.
   const { data: sourceQuote } = await supabase
     .from("quotes")
-    .select("deposit_percent")
+    .select("deposit_percent, mockup_url")
     .eq("order_id", order.id)
     .maybeSingle();
   const depositPercent = sourceQuote ? Number(sourceQuote.deposit_percent) : null;
+  const mockupUrl = sourceQuote?.mockup_url ?? null;
 
   const requirements = (requirementsRaw ?? []).map((r) => {
     const articleType = r.article_types as unknown as {
@@ -145,6 +146,16 @@ export default async function PedidoPublicoPage({
         Completá los datos de tu pedido. Podés volver a este link para revisar
         o corregir mientras no esté confirmado.
       </p>
+
+      {mockupUrl && (
+        // eslint-disable-next-line @next/next/no-img-element
+        <img
+          src={mockupUrl}
+          alt="Mockup del diseño"
+          className="mt-4 max-h-64 w-full rounded-lg border border-zinc-200 object-contain"
+        />
+      )}
+
       <PedidoForm
         orderId={order.id}
         token={token}
