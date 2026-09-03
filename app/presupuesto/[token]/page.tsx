@@ -60,6 +60,7 @@ export default async function PresupuestoPublicoPage({
         businessName={businessName}
         logoUrl={logoUrl}
         orderToken={orderToken}
+        mockupUrl={quote.mockup_url}
       />
     );
   }

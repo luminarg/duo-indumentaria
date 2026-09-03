@@ -23,6 +23,7 @@ export function QuoteClosedView({
   businessName,
   logoUrl,
   orderToken,
+  mockupUrl,
 }: {
   quoteNumber: string;
   status: string;
@@ -32,6 +33,7 @@ export function QuoteClosedView({
   businessName: string;
   logoUrl: string | null;
   orderToken: string | null;
+  mockupUrl: string | null;
 }) {
   return (
     <div className="min-h-screen bg-black">
@@ -48,6 +50,15 @@ export function QuoteClosedView({
             {STATUS_MESSAGE[status] ?? "Este presupuesto ya no admite cambios."}
           </p>
         </div>
+
+        {mockupUrl && (
+          // eslint-disable-next-line @next/next/no-img-element
+          <img
+            src={mockupUrl}
+            alt="Mockup del diseño"
+            className="mb-5 max-h-64 w-full rounded-lg border border-white/10 object-contain"
+          />
+        )}
 
         {status === "aprobado" && (
           <div className="rounded-xl bg-white/5 p-5">

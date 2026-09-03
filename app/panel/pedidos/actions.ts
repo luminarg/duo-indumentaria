@@ -166,3 +166,75 @@ export async function createOrderNote(orderId: string, body: string) {
 
   revalidatePath(`/panel/pedidos/${orderId}`);
 }
+
+// Artículos del pedido (order_article_requirements) — a diferencia de los
+// artículos del presupuesto, estos se pueden seguir agregando/editando/
+// borrando DESPUÉS de generar el pedido, por si el cliente pide sumar algo
+// una vez que ya tiene el link (caso típico: presupuesto abierto donde el
+// cliente carga cantidades y después pide un artículo más).
+export async function createOrderRequirement(orderId: string, formData: FormData) {
+  await requireTeamMember();
+  const supabase = await createClient();
+
+  const description = String(formData.get("description") || "").trim();
+  if (!description) throw new Error("Falta la descripción del artículo");
+  const unitPrice = Number(formData.get("unit_price") || 0);
+  const quantityQuotedRaw = String(formData.get("quantity_quoted") || "").trim();
+  const articleTypeId = String(formData.get("article_type_id") || "") || null;
+
+  const { data: existing } = await supabase
+    .from("order_article_requirements")
+    .select("id")
+    .eq("order_id", orderId);
+
+  const { error } = await supabase.from("order_article_requirements").insert({
+    order_id: orderId,
+    description,
+    unit_price: unitPrice,
+    quantity_quoted: quantityQuotedRaw ? Number(quantityQuotedRaw) : null,
+    article_type_id: articleTypeId,
+    requires_number: formData.get("requires_number") === "on",
+    requires_name: formData.get("requires_name") === "on",
+    sort_order: existing?.length ?? 0,
+  });
+  if (error) throw new Error("No se pudo agregar el artículo: " + error.message);
+
+  revalidatePath(`/panel/pedidos/${orderId}`);
+  revalidatePath(`/pedido/${orderId}`);
+}
+
+export async function updateOrderRequirement(requirementId: string, orderId: string, formData: FormData) {
+  await requireTeamMember();
+  const supabase = await createClient();
+
+  const description = String(formData.get("description") || "").trim();
+  if (!description) throw new Error("Falta la descripción del artículo");
+  const unitPrice = Number(formData.get("unit_price") || 0);
+  const quantityQuotedRaw = String(formData.get("quantity_quoted") || "").trim();
+  const articleTypeId = String(formData.get("article_type_id") || "") || null;
+
+  const { error } = await supabase
+    .from("order_article_requirements")
+    .update({
+      description,
+      unit_price: unitPrice,
+      quantity_quoted: quantityQuotedRaw ? Number(quantityQuotedRaw) : null,
+      article_type_id: articleTypeId,
+      requires_number: formData.get("requires_number") === "on",
+      requires_name: formData.get("requires_name") === "on",
+    })
+    .eq("id", requirementId);
+  if (error) throw new Error("No se pudo guardar el artículo: " + error.message);
+
+  revalidatePath(`/panel/pedidos/${orderId}`);
+}
+
+export async function deleteOrderRequirement(requirementId: string, orderId: string) {
+  await requireTeamMember();
+  const supabase = await createClient();
+
+  const { error } = await supabase.from("order_article_requirements").delete().eq("id", requirementId);
+  if (error) throw new Error("No se pudo borrar el artículo: " + error.message);
+
+  revalidatePath(`/panel/pedidos/${orderId}`);
+}

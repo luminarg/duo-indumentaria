@@ -5,6 +5,7 @@ import { PageHeader } from "../../../components/ui/PageHeader";
 import { Button } from "../../../components/ui/Button";
 import { ShareOrderLink } from "../../../components/ui/ShareOrderLink";
 import { OrderDetail } from "./OrderDetail";
+import { OrderRequirementsManager } from "./OrderRequirementsManager";
 import { DeleteOrderButton } from "./DeleteOrderButton";
 
 export default async function OrderDetailPage({
@@ -15,14 +16,22 @@ export default async function OrderDetailPage({
   const { id } = await params;
   const supabase = await createClient();
 
-  const [{ data: order }, { data: details }, { data: items }, { data: resources }, { data: requirements }, { data: notes }] =
+  const [{ data: order }, { data: details }, { data: items }, { data: resources }, { data: requirements }, { data: notes }, { data: articleTypes }] =
     await Promise.all([
       supabase.from("orders").select("*").eq("id", id).single(),
       supabase.from("order_technical_details").select("*").eq("order_id", id).maybeSingle(),
       supabase.from("order_items").select("*").eq("order_id", id),
       supabase.from("order_resources").select("*").eq("order_id", id).order("uploaded_at", { ascending: false }),
-      supabase.from("order_article_requirements").select("id, description, unit_price").eq("order_id", id),
+      supabase
+        .from("order_article_requirements")
+        .select("id, description, unit_price, quantity_quoted, article_type_id, requires_number, requires_name")
+        .eq("order_id", id)
+        .order("sort_order", { ascending: true }),
       supabase.from("internal_notes").select("*").eq("order_id", id).order("created_at", { ascending: false }),
+      supabase
+        .from("article_types")
+        .select("id, name, requires_number, requires_name")
+        .order("sort_order", { ascending: true }),
     ]);
 
   if (!order) notFound();
@@ -79,15 +88,22 @@ export default async function OrderDetailPage({
           </div>
         }
       />
-      <OrderDetail
-        order={order}
-        details={details}
-        items={items ?? []}
-        resources={resourcesWithUrls}
-        requirementInfo={requirementInfo}
-        depositPercent={depositPercent}
-        notes={notes ?? []}
-      />
+      <div className="flex max-w-3xl flex-col gap-6">
+        <OrderRequirementsManager
+          orderId={order.id}
+          requirements={requirements ?? []}
+          articleTypes={articleTypes ?? []}
+        />
+        <OrderDetail
+          order={order}
+          details={details}
+          items={items ?? []}
+          resources={resourcesWithUrls}
+          requirementInfo={requirementInfo}
+          depositPercent={depositPercent}
+          notes={notes ?? []}
+        />
+      </div>
     </div>
   );
 }
