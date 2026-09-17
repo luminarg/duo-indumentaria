@@ -15,6 +15,7 @@ import { Button } from "../../../components/ui/Button";
 import { Badge } from "../../../components/ui/Badge";
 import { DeliveryBadge } from "../../../components/ui/DeliveryBadge";
 import { InternalNotes, type InternalNote } from "../../../components/ui/InternalNotes";
+import { summarizeBySizeAndProduct } from "@/lib/orderSummary";
 
 type Order = {
   id: string;
@@ -297,23 +298,48 @@ export function OrderDetail({
                 const unitPrice = item.requirement_id ? requirementInfo[item.requirement_id]?.unitPrice ?? 0 : 0;
                 return sum + unitPrice * item.quantity;
               }, 0);
+              const summary = summarizeBySizeAndProduct(
+                items.map((item) => ({
+                  product: item.requirement_id ? requirementInfo[item.requirement_id]?.description : null,
+                  size: item.size_label,
+                  quantity: item.quantity,
+                }))
+              );
               return (
-                <div className="mt-4 flex justify-end border-t border-zinc-200 pt-3">
-                  <div className="text-right">
-                    <div className="flex items-center gap-4 text-sm text-zinc-500">
-                      <span>Total</span>
-                      <span className="text-base font-semibold text-zinc-900">{formatMoney(total)}</span>
+                <>
+                  <div className="mt-4 border-t border-zinc-200 pt-3">
+                    <h3 className="mb-2 text-xs font-semibold uppercase tracking-wide text-zinc-500">
+                      Resumen por talle
+                    </h3>
+                    <div className="flex flex-col gap-2">
+                      {summary.map((group) => (
+                        <div key={group.product} className="text-sm">
+                          <span className="font-medium text-zinc-800">{group.product}:</span>{" "}
+                          <span className="text-zinc-600">
+                            {group.sizes.map((s) => `${s.size} - ${s.quantity}`).join(", ")}
+                          </span>{" "}
+                          <span className="font-medium text-zinc-900">(total {group.total})</span>
+                        </div>
+                      ))}
                     </div>
-                    {depositPercent !== null && (
-                      <div className="mt-1 flex items-center gap-4 text-sm text-zinc-500">
-                        <span>Seña ({depositPercent}%)</span>
-                        <span className="text-base font-semibold text-zinc-900">
-                          {formatMoney((total * depositPercent) / 100)}
-                        </span>
-                      </div>
-                    )}
                   </div>
-                </div>
+                  <div className="mt-4 flex justify-end border-t border-zinc-200 pt-3">
+                    <div className="text-right">
+                      <div className="flex items-center gap-4 text-sm text-zinc-500">
+                        <span>Total</span>
+                        <span className="text-base font-semibold text-zinc-900">{formatMoney(total)}</span>
+                      </div>
+                      {depositPercent !== null && (
+                        <div className="mt-1 flex items-center gap-4 text-sm text-zinc-500">
+                          <span>Seña ({depositPercent}%)</span>
+                          <span className="text-base font-semibold text-zinc-900">
+                            {formatMoney((total * depositPercent) / 100)}
+                          </span>
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                </>
               );
             })()}
           </>

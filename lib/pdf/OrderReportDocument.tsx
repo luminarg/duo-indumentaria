@@ -2,6 +2,7 @@ import { Document, Page, Text, View, Image } from "@react-pdf/renderer";
 import { pdfStyles } from "./styles";
 import { BrandHeader } from "./BrandHeader";
 import { getReadableForeground, getMutedForeground } from "../color";
+import { summarizeBySizeAndProduct } from "../orderSummary";
 
 type OrderReportProps = {
   business: {
@@ -31,6 +32,7 @@ type OrderReportProps = {
     printNotes: string | null;
   } | null;
   items: {
+    product: string | null;
     sizeLabel: string | null;
     color: string | null;
     individualName: string | null;
@@ -75,6 +77,9 @@ export function OrderReportDocument({
   const accentText = getReadableForeground(accent);
   const accentMuted = getMutedForeground(accent);
   const totalQuantity = items.reduce((sum, item) => sum + (item.quantity || 0), 0);
+  const sizeSummary = summarizeBySizeAndProduct(
+    items.map((item) => ({ product: item.product, size: item.sizeLabel, quantity: item.quantity }))
+  );
 
   return (
     <Document title={`Ficha técnica ${order.orderNumber}`}>
@@ -186,11 +191,24 @@ export function OrderReportDocument({
           </View>
         </View>
 
+        {sizeSummary.length > 0 && (
+          <View style={pdfStyles.section}>
+            <Text style={pdfStyles.sectionTitle}>Resumen por talle</Text>
+            {sizeSummary.map((group) => (
+              <Text key={group.product} style={{ marginBottom: 3 }}>
+                {group.product}: {group.sizes.map((s) => `${s.size} - ${s.quantity}`).join(", ")} (total{" "}
+                {group.total})
+              </Text>
+            ))}
+          </View>
+        )}
+
         {items.length > 0 && (
           <View style={pdfStyles.section}>
             <Text style={pdfStyles.sectionTitle}>Prendas ({items.length})</Text>
             <View style={pdfStyles.table}>
               <View style={[pdfStyles.tableHeaderRow, { backgroundColor: accent, borderBottomWidth: 0, borderRadius: 4 }]}>
+                <Text style={[pdfStyles.tableCell, { color: accentText }]}>Artículo</Text>
                 <Text style={[pdfStyles.tableCell, { color: accentText }]}>Talle</Text>
                 <Text style={[pdfStyles.tableCell, { color: accentText }]}>Nombre</Text>
                 <Text style={[pdfStyles.tableCell, { color: accentText }]}>Número</Text>
@@ -198,6 +216,7 @@ export function OrderReportDocument({
               </View>
               {items.map((item, i) => (
                 <View key={i} style={pdfStyles.tableRow}>
+                  <Text style={pdfStyles.tableCell}>{item.product ?? "—"}</Text>
                   <Text style={pdfStyles.tableCell}>{item.sizeLabel ?? "—"}</Text>
                   <Text style={pdfStyles.tableCell}>{item.individualName ?? "—"}</Text>
                   <Text style={pdfStyles.tableCell}>{item.individualNumber ?? "—"}</Text>

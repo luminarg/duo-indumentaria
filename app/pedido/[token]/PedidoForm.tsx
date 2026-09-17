@@ -3,6 +3,7 @@
 import { useMemo, useState, useTransition } from "react";
 import { ImageUp } from "lucide-react";
 import { submitPedido, uploadPedidoResource, deletePedidoResource, type SubmitPedidoInput } from "./actions";
+import { summarizeBySizeAndProduct } from "@/lib/orderSummary";
 
 type Row = { size: string; individualName: string; individualNumber: string; quantity: number };
 
@@ -320,6 +321,16 @@ export function PedidoForm({
   );
   const liveDeposit = depositPercent !== null ? (liveTotal * depositPercent) / 100 : null;
 
+  const sizeSummary = useMemo(() => {
+    const rows = requirements.flatMap((req) =>
+      (rowsByRequirement[req.id] ?? []).map((r) => ({ product: req.description, size: r.size, quantity: r.quantity }))
+    );
+    if (showLegacy) {
+      rows.push(...legacyRows.map((r) => ({ product: "Otras prendas", size: r.size, quantity: r.quantity })));
+    }
+    return summarizeBySizeAndProduct(rows);
+  }, [requirements, rowsByRequirement, showLegacy, legacyRows]);
+
   const [uploadError, setUploadError] = useState<string | null>(null);
   const [isUploading, startUpload] = useTransition();
 
@@ -556,6 +567,21 @@ export function PedidoForm({
           value={notes}
           onChange={(e) => setNotes(e.target.value)}
         />
+
+        {sizeSummary.length > 0 && (
+          <div className="rounded-md bg-zinc-50 px-4 py-3 text-sm">
+            <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-zinc-500">Resumen por talle</p>
+            <div className="flex flex-col gap-1">
+              {sizeSummary.map((group) => (
+                <div key={group.product} className="text-zinc-700">
+                  <span className="font-medium text-zinc-900">{group.product}:</span>{" "}
+                  {group.sizes.map((s) => `${s.size} - ${s.quantity}`).join(", ")}{" "}
+                  <span className="font-medium">(total {group.total})</span>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
 
         {liveTotal > 0 && (
           <div className="rounded-md bg-zinc-50 px-4 py-3 text-sm">

@@ -24,18 +24,21 @@ export async function GET(_req: Request, { params }: { params: Promise<{ id: str
     return NextResponse.json({ error: "No autenticado" }, { status: 401 });
   }
 
-  const [{ data: order }, { data: details }, { data: items }, { data: resources }, { data: settings }] =
+  const [{ data: order }, { data: details }, { data: items }, { data: resources }, { data: settings }, { data: requirements }] =
     await Promise.all([
       supabase.from("orders").select("*").eq("id", id).single(),
       supabase.from("order_technical_details").select("*").eq("order_id", id).maybeSingle(),
       supabase.from("order_items").select("*").eq("order_id", id),
       supabase.from("order_resources").select("*").eq("order_id", id),
       supabase.from("business_settings").select("*").eq("id", 1).single(),
+      supabase.from("order_article_requirements").select("id, description").eq("order_id", id),
     ]);
 
   if (!order) {
     return NextResponse.json({ error: "Pedido no encontrado" }, { status: 404 });
   }
+
+  const descriptionByRequirement = Object.fromEntries((requirements ?? []).map((r) => [r.id, r.description]));
 
   // Las imágenes están en un bucket privado — las bajamos y convertimos a
   // data URI para poder incrustarlas directo en el PDF. El primer mockup y
@@ -96,6 +99,7 @@ export async function GET(_req: Request, { params }: { params: Promise<{ id: str
           }
         : null,
       items: (items ?? []).map((item) => ({
+        product: item.requirement_id ? descriptionByRequirement[item.requirement_id] ?? null : null,
         sizeLabel: item.size_label,
         color: item.color,
         individualName: item.individual_name,
