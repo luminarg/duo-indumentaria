@@ -3,6 +3,7 @@ import { notFound } from "next/navigation";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { PedidoForm } from "./PedidoForm";
 import { OrderTrackingView } from "./OrderTrackingView";
+import { CLIENT_EDITABLE_STATUSES } from "@/lib/orderStatus";
 
 // Link privado de un pedido puntual — no tiene que aparecer en buscadores
 // ni compartir su URL con nadie que no sea el cliente dueño del link.
@@ -43,7 +44,7 @@ export default async function PedidoPublicoPage({
   const logoUrl = settings?.logo_url ?? null;
   const primaryColor = settings?.primary_color ?? "#0a0a0a";
 
-  if (order.status !== "borrador" && order.status !== "cargado_por_cliente") {
+  if (!CLIENT_EDITABLE_STATUSES.includes(order.status)) {
     return (
       <OrderTrackingView
         orderNumber={order.order_number}

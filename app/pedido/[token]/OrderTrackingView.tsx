@@ -1,13 +1,12 @@
-import { UploadCloud, HandCoins, Scissors, Stamp, Shirt, Package, Truck, Check } from "lucide-react";
+import { Lock, Scissors, Ruler, Stamp, Shirt, Truck, Check } from "lucide-react";
 import { getReadableForeground } from "@/lib/color";
 
 const STEPS = [
-  { key: "cargado_por_cliente", label: "Pedido cargado", icon: UploadCloud },
-  { key: "senado", label: "Seña confirmada", icon: HandCoins },
+  { key: "cerrado", label: "Pedido cerrado", icon: Lock },
   { key: "cortando", label: "Cortando", icon: Scissors },
-  { key: "estampando", label: "Estampando", icon: Stamp },
-  { key: "armando", label: "Armando", icon: Shirt },
-  { key: "embalando", label: "Embalando", icon: Package },
+  { key: "diseno_molderia", label: "Diseño en moldería", icon: Ruler },
+  { key: "sublimacion_estampado", label: "Sublimación / estampado", icon: Stamp },
+  { key: "costura_terminaciones", label: "Costura y terminaciones", icon: Shirt },
   { key: "entregado", label: "Entregado", icon: Truck },
 ] as const;
 

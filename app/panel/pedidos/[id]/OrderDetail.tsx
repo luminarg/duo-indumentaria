@@ -16,6 +16,8 @@ import { Badge } from "../../../components/ui/Badge";
 import { DeliveryBadge } from "../../../components/ui/DeliveryBadge";
 import { InternalNotes, type InternalNote } from "../../../components/ui/InternalNotes";
 import { summarizeBySizeAndProduct } from "@/lib/orderSummary";
+import { ORDER_STATUSES, CLIENT_EDITABLE_STATUSES, orderStatusLabel } from "@/lib/orderStatus";
+import { Lock } from "lucide-react";
 
 type Order = {
   id: string;
@@ -53,17 +55,6 @@ type Resource = {
   file_url: string;
   signedUrl: string | null;
 };
-
-const STATUSES = [
-  "borrador",
-  "cargado_por_cliente",
-  "senado",
-  "cortando",
-  "estampando",
-  "armando",
-  "embalando",
-  "entregado",
-];
 
 const RESOURCE_TYPES = [
   { value: "mockup", label: "Mockup" },
@@ -110,6 +101,13 @@ export function OrderDetail({
         setError(err instanceof Error ? err.message : "Error al cambiar el estado");
       }
     });
+  }
+
+  // Cierra el pedido: el cliente ya no puede editar su link (pasa a ver el
+  // seguimiento de producción) y se registra la seña como cobrada.
+  function handleCloseOrder() {
+    if (!window.confirm("¿Cerrar el pedido? El cliente ya no va a poder modificarlo desde su link.")) return;
+    handleStatusChange("cerrado");
   }
 
   function handleDetailsSubmit(e: React.FormEvent<HTMLFormElement>) {
@@ -178,18 +176,27 @@ export function OrderDetail({
             <DeliveryBadge status={order.status} estimatedDeliveryDate={order.estimated_delivery_date} />
           </div>
         </div>
-        <select
-          defaultValue={order.status}
-          disabled={isPending}
-          onChange={(e) => handleStatusChange(e.target.value)}
-          className="rounded-md border border-zinc-300 px-3 py-2 text-sm"
-        >
-          {STATUSES.map((s) => (
-            <option key={s} value={s}>
-              {s.replace(/_/g, " ")}
-            </option>
-          ))}
-        </select>
+        <div className="flex items-center gap-2">
+          <select
+            key={order.status}
+            defaultValue={order.status}
+            disabled={isPending}
+            onChange={(e) => handleStatusChange(e.target.value)}
+            className="rounded-md border border-zinc-300 px-3 py-2 text-sm"
+          >
+            {ORDER_STATUSES.map((s) => (
+              <option key={s} value={s}>
+                {orderStatusLabel(s)}
+              </option>
+            ))}
+          </select>
+          {CLIENT_EDITABLE_STATUSES.includes(order.status) && (
+            <Button type="button" onClick={handleCloseOrder} disabled={isPending}>
+              <Lock className="h-4 w-4" />
+              Cerrar pedido
+            </Button>
+          )}
+        </div>
         <form onSubmit={handleDeliveryDateSubmit} className="flex items-end gap-2">
           <Input
             label="Fecha de entrega aproximada"

@@ -3,6 +3,7 @@ import { pdfStyles } from "./styles";
 import { BrandHeader } from "./BrandHeader";
 import { getReadableForeground, getMutedForeground } from "../color";
 import { summarizeBySizeAndProduct } from "../orderSummary";
+import { ORDER_STATUS_LABELS } from "../orderStatus";
 
 type OrderReportProps = {
   business: {
@@ -51,16 +52,7 @@ function formatDate(iso: string) {
   return new Date(iso).toLocaleDateString("es-AR");
 }
 
-const STATUS_LABELS: Record<string, string> = {
-  borrador: "Borrador",
-  cargado_por_cliente: "Cargado por el cliente",
-  senado: "Seña confirmada",
-  cortando: "Cortando",
-  estampando: "Estampando",
-  armando: "Armando",
-  embalando: "Embalando",
-  entregado: "Entregado",
-};
+const STATUS_LABELS = ORDER_STATUS_LABELS;
 
 export function OrderReportDocument({
   business,

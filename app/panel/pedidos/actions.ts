@@ -62,7 +62,9 @@ export async function updateOrderStatus(orderId: string, status: string) {
   const now = new Date().toISOString();
   const patch: Record<string, string | null> = { status, updated_at: now };
 
-  if (status === "senado" && !current?.deposit_paid_at) patch.deposit_paid_at = now;
+  // "Cerrado" es cuando el pedido queda confirmado (con la seña) — de ahí
+  // sale el ingreso de la seña en Caja y en las métricas del mes.
+  if (status === "cerrado" && !current?.deposit_paid_at) patch.deposit_paid_at = now;
   if (status === "cortando" && !current?.production_started_at) patch.production_started_at = now;
   if (status === "entregado" && !current?.delivered_at) patch.delivered_at = now;
 
@@ -71,6 +73,7 @@ export async function updateOrderStatus(orderId: string, status: string) {
   revalidatePath(`/panel/pedidos/${orderId}`);
   revalidatePath("/panel/pedidos");
   revalidatePath("/panel");
+  revalidatePath("/pedido/[token]", "page");
 }
 
 export async function updateEstimatedDeliveryDate(orderId: string, formData: FormData) {

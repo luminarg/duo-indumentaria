@@ -3,6 +3,7 @@ import { createClient } from "@/lib/supabase/server";
 import { PageHeader } from "../../../components/ui/PageHeader";
 import { Card } from "../../../components/ui/Card";
 import { ClienteDetail } from "./ClienteDetail";
+import { orderStatusLabel } from "@/lib/orderStatus";
 
 export default async function ClienteDetailPage({
   params,
@@ -57,7 +58,7 @@ export default async function ClienteDetailPage({
               {orders.map((o) => (
                 <li key={o.id} className="flex justify-between border-b border-zinc-100 py-2 last:border-0">
                   <span>{o.order_number}</span>
-                  <span className="capitalize text-zinc-500">{o.status.replace(/_/g, " ")}</span>
+                  <span className="text-zinc-500">{orderStatusLabel(o.status)}</span>
                 </li>
               ))}
             </ul>

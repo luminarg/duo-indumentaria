@@ -2,6 +2,7 @@
 
 import { revalidatePath } from "next/cache";
 import { createAdminClient } from "@/lib/supabase/admin";
+import { CLIENT_EDITABLE_STATUSES } from "@/lib/orderStatus";
 import { z } from "zod";
 
 const rowSchema = z.object({
@@ -52,12 +53,18 @@ export async function submitPedido(input: SubmitPedidoInput) {
 
   const { data: order, error: findError } = await supabase
     .from("orders")
-    .select("id")
+    .select("id, status")
     .eq("public_token", data.token)
     .single();
 
   if (findError || !order) {
     return { ok: false as const, error: "No se encontró el pedido para este link" };
+  }
+
+  // Si el equipo ya cerró el pedido, el cliente no puede seguir modificándolo
+  // (sino un "Guardar" tardío lo volvería a abrir).
+  if (!CLIENT_EDITABLE_STATUSES.includes(order.status)) {
+    return { ok: false as const, error: "Este pedido ya fue cerrado y no admite cambios. Escribinos si necesitás modificar algo." };
   }
 
   const updatePayload: Record<string, unknown> = {

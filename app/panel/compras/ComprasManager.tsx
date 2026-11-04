@@ -255,7 +255,7 @@ export function ComprasManager({
             <p className="text-sm text-zinc-400">
               {incomeQuery
                 ? "No hay resultados para esa búsqueda."
-                : "Todavía no hay ingresos registrados — se cargan solos cuando marcás un pedido como señado o entregado."}
+                : "Todavía no hay ingresos registrados — se cargan solos cuando cerrás un pedido (seña) o lo marcás como entregado (saldo)."}
             </p>
           )}
         </Card>

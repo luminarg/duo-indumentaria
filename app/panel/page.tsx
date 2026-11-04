@@ -2,11 +2,11 @@ import Link from "next/link";
 import {
   FileEdit,
   UploadCloud,
-  HandCoins,
+  Lock,
   Scissors,
+  Ruler,
   Stamp,
   Shirt,
-  Package,
   Truck,
   CheckSquare,
   ArrowRight,
@@ -88,11 +88,11 @@ export default async function DashboardPage() {
   const statuses = [
     ["borrador", "Borrador", FileEdit],
     ["cargado_por_cliente", "Cargado", UploadCloud],
-    ["senado", "Señado", HandCoins],
+    ["cerrado", "Cerrado", Lock],
     ["cortando", "Cortando", Scissors],
-    ["estampando", "Estampando", Stamp],
-    ["armando", "Armando", Shirt],
-    ["embalando", "Embalando", Package],
+    ["diseno_molderia", "Moldería", Ruler],
+    ["sublimacion_estampado", "Sublimación", Stamp],
+    ["costura_terminaciones", "Costura", Shirt],
     ["entregado", "Entregado", Truck],
   ] as const;
 
@@ -103,7 +103,7 @@ export default async function DashboardPage() {
   // este mes (compras con proveedor + gastos generales, ya unificados).
   const costoMensual = (monthPurchases ?? []).reduce((sum, p) => sum + Number(p.real_cost ?? 0), 0);
 
-  // Cobranza total del mes: seña cobrada (cuando el pedido pasó a "señado")
+  // Cobranza total del mes: seña cobrada (cuando el pedido pasó a "cerrado")
   // + saldo cobrado (cuando se marcó "entregado"), cruzando con el monto del
   // presupuesto que generó cada pedido.
   const cobranzaSenas = (depositedOrders ?? []).reduce((sum, o) => {

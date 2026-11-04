@@ -7,6 +7,7 @@ import { Badge } from "../../components/ui/Badge";
 import { DeliveryBadge } from "../../components/ui/DeliveryBadge";
 import { SearchInput } from "../../components/ui/SearchInput";
 import { EmptyState } from "../../components/ui/EmptyState";
+import { orderStatusLabel } from "@/lib/orderStatus";
 
 type Order = {
   id: string;
@@ -31,7 +32,7 @@ export function PedidosTable({ orders, siteUrl }: { orders: Order[]; siteUrl: st
     const q = query.trim().toLowerCase();
     if (!q) return orders;
     return orders.filter((o) =>
-      [o.order_number, o.team_or_group_name, o.contact_name, o.status]
+      [o.order_number, o.team_or_group_name, o.contact_name, o.status, orderStatusLabel(o.status)]
         .filter(Boolean)
         .some((field) => field!.toLowerCase().includes(q))
     );

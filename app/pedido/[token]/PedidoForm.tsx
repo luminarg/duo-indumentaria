@@ -430,7 +430,10 @@ export function PedidoForm({
                 )}
               </>
             )}
-            <p className="mt-3 text-xs text-green-700">Te vamos a contactar para coordinar la seña.</p>
+            <p className="mt-3 text-xs text-green-700">
+              Podés volver a este link y seguir modificando hasta que cerremos el pedido. Te vamos a contactar para
+              coordinar la seña.
+            </p>
           </div>
         )}
         {error && (
@@ -603,7 +606,7 @@ export function PedidoForm({
           disabled={isPending}
           className="rounded-md bg-zinc-900 px-4 py-2.5 text-sm font-medium text-white disabled:opacity-50"
         >
-          {isPending ? "Guardando..." : "Enviar pedido"}
+          {isPending ? "Guardando..." : "Guardar"}
         </button>
       </form>
 
