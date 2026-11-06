@@ -68,12 +68,14 @@ export async function updateOrderStatus(orderId: string, status: string) {
   if (status === "cortando" && !current?.production_started_at) patch.production_started_at = now;
   if (status === "entregado" && !current?.delivered_at) patch.delivered_at = now;
 
+  // Devolvemos el error en vez de tirarlo: en producción Next.js oculta el
+  // mensaje de los errores tirados, y así se ve el motivo real en pantalla.
   const { error } = await supabase.from("orders").update(patch).eq("id", orderId);
-  if (error) throw new Error("No se pudo cambiar el estado: " + error.message);
+  if (error) return { ok: false as const, error: "No se pudo cambiar el estado: " + error.message };
   revalidatePath(`/panel/pedidos/${orderId}`);
   revalidatePath("/panel/pedidos");
   revalidatePath("/panel");
-  revalidatePath("/pedido/[token]", "page");
+  return { ok: true as const };
 }
 
 export async function updateEstimatedDeliveryDate(orderId: string, formData: FormData) {

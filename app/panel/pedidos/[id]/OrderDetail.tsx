@@ -96,7 +96,8 @@ export function OrderDetail({
     setError(null);
     startTransition(async () => {
       try {
-        await updateOrderStatus(order.id, status);
+        const result = await updateOrderStatus(order.id, status);
+        if (!result.ok) setError(result.error);
       } catch (err) {
         setError(err instanceof Error ? err.message : "Error al cambiar el estado");
       }
