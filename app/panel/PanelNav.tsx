@@ -13,6 +13,7 @@ import {
   UserCog,
   Settings,
   Images,
+  Files,
 } from "lucide-react";
 import { cn } from "@/lib/cn";
 
@@ -26,6 +27,7 @@ const NAV = [
   { href: "/panel/agenda", label: "Agenda", icon: Calendar },
   { href: "/panel/compras", label: "Caja", icon: Wallet },
   { href: "/panel/usuarios", label: "Usuarios", icon: UserCog },
+  { href: "/panel/paginas", label: "Páginas", icon: Files },
   { href: "/panel/configuracion", label: "Configuración", icon: Settings },
 ];
 

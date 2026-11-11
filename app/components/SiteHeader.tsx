@@ -6,11 +6,13 @@ export function SiteHeader({
   logoUrl,
   whatsappNumber,
   hasHeroImage,
+  menuPages = [],
 }: {
   businessName: string;
   logoUrl: string | null;
   whatsappNumber: string | null;
   hasHeroImage: boolean;
+  menuPages?: { title: string; slug: string }[];
 }) {
   // Si el hero tiene una foto de fondo, el header queda casi sin
   // superposición oscura (ver Hero.tsx), así que usamos texto blanco fijo
@@ -36,7 +38,12 @@ export function SiteHeader({
         <Link href="/products" className={`transition-colors ${hoverClass}`}>
           Catálogo
         </Link>
-        <Link href="#contacto" className={`transition-colors ${hoverClass}`}>
+        {menuPages.map((p) => (
+          <Link key={p.slug} href={`/${p.slug}`} className={`transition-colors ${hoverClass}`}>
+            {p.title}
+          </Link>
+        ))}
+        <Link href="/#contacto" className={`transition-colors ${hoverClass}`}>
           Contacto
         </Link>
       </nav>

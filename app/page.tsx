@@ -10,7 +10,7 @@ import { SiteFooter } from "./components/SiteFooter";
 export default async function Home() {
   const supabase = await createClient();
 
-  const [{ data: settings }, { data: sliders }, { data: images }, { data: features }] = await Promise.all([
+  const [{ data: settings }, { data: sliders }, { data: images }, { data: features }, { data: menuPages }] = await Promise.all([
     supabase.from("business_settings").select("*").eq("id", 1).single(),
     supabase
       .from("site_sliders")
@@ -27,6 +27,12 @@ export default async function Home() {
       .from("site_features")
       .select("id, icon, title, description")
       .eq("active", true)
+      .order("sort_order", { ascending: true }),
+    supabase
+      .from("site_pages")
+      .select("title, slug")
+      .eq("published", true)
+      .eq("show_in_menu", true)
       .order("sort_order", { ascending: true }),
   ]);
 
@@ -53,6 +59,7 @@ export default async function Home() {
         logoUrl={settings?.logo_url ?? null}
         whatsappNumber={settings?.whatsapp_number ?? null}
         hasHeroImage={(sliders ?? []).length > 0}
+        menuPages={menuPages ?? []}
       />
 
       <Hero
@@ -77,7 +84,7 @@ export default async function Home() {
         facebook={settings?.social_facebook ?? null}
       />
 
-      <SiteFooter businessName={businessName} />
+      <SiteFooter businessName={businessName} menuPages={menuPages ?? []} />
     </div>
   );
 }
