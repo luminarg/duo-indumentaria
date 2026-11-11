@@ -35,9 +35,6 @@ export function SiteHeader({
         )}
       </Link>
       <nav className={`hidden items-center gap-8 text-sm font-medium sm:flex ${mutedClass}`}>
-        <Link href="/products" className={`transition-colors ${hoverClass}`}>
-          Catálogo
-        </Link>
         {menuPages.map((p) => (
           <Link key={p.slug} href={`/${p.slug}`} className={`transition-colors ${hoverClass}`}>
             {p.title}

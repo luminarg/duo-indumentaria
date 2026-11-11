@@ -10,7 +10,7 @@ export default async function TareasPage() {
   const [{ data: tasksRaw }, { data: orders }, { data: teamMembers }, alreadySubscribed] = await Promise.all([
     supabase
       .from("tasks")
-      .select("id, title, description, status, priority, due_date, orders(order_number), profiles(full_name)")
+      .select("id, title, description, status, priority, due_date, created_at, orders(order_number), profiles(full_name)")
       .order("due_date", { ascending: true, nullsFirst: false })
       .order("created_at", { ascending: false }),
     supabase.from("orders").select("id, order_number").order("created_at", { ascending: false }),
@@ -25,6 +25,7 @@ export default async function TareasPage() {
     status: t.status,
     priority: t.priority,
     due_date: t.due_date,
+    created_at: t.created_at,
     orderNumber: (t.orders as unknown as { order_number: string } | null)?.order_number ?? null,
     assignedName: (t.profiles as unknown as { full_name: string } | null)?.full_name ?? null,
   }));
