@@ -7,6 +7,7 @@ import { Input, Select, Textarea } from "../../components/ui/Input";
 import { Button } from "../../components/ui/Button";
 import { SearchInput } from "../../components/ui/SearchInput";
 import { cn } from "@/lib/cn";
+import { ArrowUp, ArrowDown } from "lucide-react";
 
 type Task = {
   id: string;
@@ -15,6 +16,7 @@ type Task = {
   status: "pendiente" | "en_curso" | "hecha";
   priority: "alta" | "media" | "baja";
   due_date: string | null;
+  created_at: string;
   orderNumber: string | null;
   assignedName: string | null;
 };
@@ -49,6 +51,39 @@ const PRIORITY_LABELS: Record<Task["priority"], string> = {
   media: "Media",
   baja: "Baja",
 };
+
+type SortKey = "priority" | "due_date" | "created_at" | "title";
+
+const SORT_OPTIONS: { key: SortKey; label: string }[] = [
+  { key: "priority", label: "Prioridad" },
+  { key: "due_date", label: "Vencimiento" },
+  { key: "created_at", label: "Fecha de creación" },
+  { key: "title", label: "Título" },
+];
+
+const PRIORITY_RANK: Record<Task["priority"], number> = { alta: 0, media: 1, baja: 2 };
+
+// Orden "natural" (flecha hacia arriba) de cada criterio: prioridad alta
+// primero, vencimiento más próximo primero, más nuevas primero, A→Z. La
+// flecha invierte ese orden. Las tareas sin fecha de vencimiento siempre
+// quedan al final.
+function compareTasks(a: Task, b: Task, key: SortKey, reversed: boolean) {
+  let result = 0;
+  if (key === "priority") {
+    result = PRIORITY_RANK[a.priority] - PRIORITY_RANK[b.priority];
+    if (result === 0) result = (a.due_date ?? "9999").localeCompare(b.due_date ?? "9999");
+  } else if (key === "due_date") {
+    if (!a.due_date && !b.due_date) result = 0;
+    else if (!a.due_date) return 1;
+    else if (!b.due_date) return -1;
+    else result = a.due_date.localeCompare(b.due_date);
+  } else if (key === "created_at") {
+    result = b.created_at.localeCompare(a.created_at);
+  } else {
+    result = a.title.localeCompare(b.title, "es", { sensitivity: "base" });
+  }
+  return reversed ? -result : result;
+}
 
 function isOverdue(dueDate: string | null, status: Task["status"]) {
   if (!dueDate || status === "hecha") return false;
@@ -115,16 +150,20 @@ export function TareasBoard({
   const [showForm, setShowForm] = useState(false);
   const [query, setQuery] = useState("");
   const [editingId, setEditingId] = useState<string | null>(null);
+  const [sortKey, setSortKey] = useState<SortKey>("priority");
+  const [sortReversed, setSortReversed] = useState(false);
 
   const filteredTasks = useMemo(() => {
     const q = query.trim().toLowerCase();
-    if (!q) return tasks;
-    return tasks.filter((t) =>
-      [t.title, t.description, t.orderNumber, t.assignedName]
-        .filter(Boolean)
-        .some((field) => field!.toLowerCase().includes(q))
-    );
-  }, [tasks, query]);
+    const filtered = !q
+      ? tasks
+      : tasks.filter((t) =>
+          [t.title, t.description, t.orderNumber, t.assignedName]
+            .filter(Boolean)
+            .some((field) => field!.toLowerCase().includes(q))
+        );
+    return [...filtered].sort((a, b) => compareTasks(a, b, sortKey, sortReversed));
+  }, [tasks, query, sortKey, sortReversed]);
 
   function runAction(action: () => Promise<void>, onSuccess?: () => void) {
     setError(null);
@@ -192,7 +231,37 @@ export function TareasBoard({
         )}
       </Card>
 
-      <SearchInput value={query} onChange={setQuery} placeholder="Buscar por título, pedido o responsable..." />
+      <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
+        <div className="flex-1">
+          <SearchInput value={query} onChange={setQuery} placeholder="Buscar por título, pedido o responsable..." />
+        </div>
+        <div className="flex items-center gap-1.5">
+          <span className="text-xs text-zinc-500">Ordenar por</span>
+          <select
+            value={sortKey}
+            onChange={(e) => {
+              setSortKey(e.target.value as SortKey);
+              setSortReversed(false);
+            }}
+            className="rounded-md border border-zinc-300 bg-white px-2 py-1.5 text-sm"
+          >
+            {SORT_OPTIONS.map((o) => (
+              <option key={o.key} value={o.key}>
+                {o.label}
+              </option>
+            ))}
+          </select>
+          <button
+            type="button"
+            onClick={() => setSortReversed((v) => !v)}
+            title={sortReversed ? "Orden invertido — tocá para volver" : "Tocá para invertir el orden"}
+            aria-label="Invertir orden"
+            className="flex h-9 w-9 items-center justify-center rounded-md border border-zinc-300 bg-white text-zinc-700 hover:bg-zinc-50"
+          >
+            {sortReversed ? <ArrowDown className="h-4 w-4" /> : <ArrowUp className="h-4 w-4" />}
+          </button>
+        </div>
+      </div>
 
       <div className="grid gap-4 lg:grid-cols-3">
         {COLUMNS.map((col) => {
