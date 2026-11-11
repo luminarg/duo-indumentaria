@@ -1,7 +1,7 @@
 "use client";
 
 import { useMemo, useState, useTransition } from "react";
-import { createTask, updateTaskStatus, deleteTask } from "./actions";
+import { createTask, updateTaskStatus, updateTask, deleteTask } from "./actions";
 import { Card } from "../../components/ui/Card";
 import { Input, Select, Textarea } from "../../components/ui/Input";
 import { Button } from "../../components/ui/Button";
@@ -59,6 +59,48 @@ function formatDate(iso: string) {
   return new Date(`${iso}T00:00:00`).toLocaleDateString("es-AR", { day: "2-digit", month: "2-digit" });
 }
 
+// Formulario de edición que reemplaza el contenido de la tarjeta mientras se
+// edita (título, detalle, prioridad y vencimiento).
+function TaskEditForm({ task, onDone }: { task: Task; onDone: () => void }) {
+  const [isPending, startTransition] = useTransition();
+  const [error, setError] = useState<string | null>(null);
+
+  function handleSubmit(e: React.FormEvent<HTMLFormElement>) {
+    e.preventDefault();
+    setError(null);
+    const formData = new FormData(e.currentTarget);
+    startTransition(async () => {
+      const result = await updateTask(task.id, formData);
+      if (!result.ok) setError(result.error);
+      else onDone();
+    });
+  }
+
+  return (
+    <form onSubmit={handleSubmit} className="flex flex-col gap-2">
+      {error && <div className="rounded-md bg-red-50 px-2 py-1.5 text-xs text-red-800">{error}</div>}
+      <Input name="title" defaultValue={task.title} required placeholder="Título" />
+      <Textarea name="description" defaultValue={task.description ?? ""} placeholder="Detalle (opcional)" />
+      <div className="grid grid-cols-2 gap-2">
+        <Select name="priority" defaultValue={task.priority}>
+          <option value="alta">Prioridad alta</option>
+          <option value="media">Prioridad media</option>
+          <option value="baja">Prioridad baja</option>
+        </Select>
+        <Input type="date" name="due_date" defaultValue={task.due_date ?? ""} />
+      </div>
+      <div className="flex items-center gap-2">
+        <Button type="submit" size="sm" disabled={isPending}>
+          {isPending ? "Guardando..." : "Guardar"}
+        </Button>
+        <Button type="button" size="sm" variant="secondary" onClick={onDone} disabled={isPending}>
+          Cancelar
+        </Button>
+      </div>
+    </form>
+  );
+}
+
 export function TareasBoard({
   tasks,
   orders,
@@ -72,6 +114,7 @@ export function TareasBoard({
   const [error, setError] = useState<string | null>(null);
   const [showForm, setShowForm] = useState(false);
   const [query, setQuery] = useState("");
+  const [editingId, setEditingId] = useState<string | null>(null);
 
   const filteredTasks = useMemo(() => {
     const q = query.trim().toLowerCase();
@@ -177,13 +220,19 @@ export function TareasBoard({
                       className="flex flex-col gap-2"
                       style={{ backgroundColor: STATUS_CARD_TINT[task.status] }}
                     >
+                      {editingId === task.id ? (
+                        <TaskEditForm task={task} onDone={() => setEditingId(null)} />
+                      ) : (
+                      <>
                       <div className="flex items-start justify-between gap-2">
                         <p className="text-sm font-medium text-zinc-900">{task.title}</p>
                         <span className={cn("shrink-0 rounded-full px-2 py-0.5 text-xs font-medium", PRIORITY_STYLES[task.priority])}>
                           {PRIORITY_LABELS[task.priority]}
                         </span>
                       </div>
-                      {task.description && <p className="text-xs text-zinc-500">{task.description}</p>}
+                      {task.description && (
+                        <p className="whitespace-pre-wrap text-xs text-zinc-500">{task.description}</p>
+                      )}
                       <div className="flex flex-wrap gap-x-3 gap-y-1 text-xs text-zinc-500">
                         {task.due_date && (
                           <span className={overdue ? "font-medium text-red-600" : ""}>
@@ -225,14 +274,23 @@ export function TareasBoard({
                         )}
                         <button
                           disabled={isPending}
+                          onClick={() => setEditingId(task.id)}
+                          className="ml-auto text-zinc-700 hover:underline"
+                        >
+                          Editar
+                        </button>
+                        <button
+                          disabled={isPending}
                           onClick={() => {
                             if (confirm("¿Borrar esta tarea?")) runAction(() => deleteTask(task.id));
                           }}
-                          className="ml-auto text-red-600 hover:underline"
+                          className="text-red-600 hover:underline"
                         >
                           Borrar
                         </button>
                       </div>
+                      </>
+                      )}
                     </Card>
                   );
                 })}
