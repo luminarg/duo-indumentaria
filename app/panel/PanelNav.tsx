@@ -14,12 +14,14 @@ import {
   Settings,
   Images,
   Files,
+  Scissors,
 } from "lucide-react";
 import { cn } from "@/lib/cn";
 
 const NAV = [
   { href: "/panel", label: "Dashboard", icon: LayoutDashboard },
   { href: "/panel/pedidos", label: "Pedidos", icon: ShoppingBag },
+  { href: "/panel/produccion", label: "Producción", icon: Scissors },
   { href: "/panel/clientes", label: "Clientes", icon: Users },
   { href: "/panel/presupuestos", label: "Presupuestos", icon: FileText },
   { href: "/panel/disenos", label: "Diseños", icon: Images },

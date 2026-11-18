@@ -1,0 +1,28 @@
+import { createClient } from "@/lib/supabase/server";
+import { PageHeader } from "../../../components/ui/PageHeader";
+import { MoldesManager } from "./MoldesManager";
+
+export default async function MoldesPage() {
+  const supabase = await createClient();
+  const [{ data: models }, { data: pieces }, { data: articleTypes }] = await Promise.all([
+    supabase.from("pattern_models").select("id, name, neck, base_size_label, article_type_id, active").order("name"),
+    supabase.from("pattern_pieces").select("model_id, size_label, kind"),
+    supabase.from("article_types").select("id, name").order("sort_order", { ascending: true }),
+  ]);
+
+  const summary: Record<string, Record<string, string[]>> = {};
+  for (const p of pieces ?? []) {
+    summary[p.model_id] ??= {};
+    (summary[p.model_id][p.size_label] ??= []).push(p.kind);
+  }
+
+  return (
+    <div>
+      <PageHeader
+        title="Moldería"
+        description="Modelos de molde por artículo. Cada talle se importa desde un SVG exportado de Corel, con las piezas a escala real."
+      />
+      <MoldesManager models={models ?? []} summary={summary} articleTypes={articleTypes ?? []} />
+    </div>
+  );
+}
