@@ -8,6 +8,7 @@ import { Input, Select } from "../../../components/ui/Input";
 import { EmptyState } from "../../../components/ui/EmptyState";
 import { importSvg, type ImportedPiece } from "@/lib/produccion/vectorImport";
 import { importPdf } from "@/lib/produccion/pdfImport";
+import { normalizeSize } from "@/lib/produccion/rules";
 import type { PieceKind, Poly } from "@/lib/produccion/types";
 import { createPatternModel, deletePatternModel, savePatternPieces } from "../actions";
 import { uploadToProduction } from "../upload";
@@ -140,7 +141,14 @@ function ModelDetail({ model, sizes }: { model: Model; sizes: Record<string, str
       const k = r.sizeLabel ?? "";
       (m.get(k) ?? m.set(k, []).get(k)!).push(r);
     }
-    return [...m.entries()];
+    const order = (k: string) => {
+      if (!k) return 1000;
+      const n = Number(k);
+      if (Number.isFinite(n)) return n;
+      const i = ["XXS", "XS", "S", "M", "L", "XL", "XXL", "XXXL", "XXXXL"].indexOf(normalizeSize(k));
+      return i >= 0 ? 100 + i : 500;
+    };
+    return [...m.entries()].sort((a, b) => order(a[0]) - order(b[0]));
   })();
 
   const setRow = (key: number, patch: Partial<Row>) => setRows((rs) => rs.map((r) => (r.key === key ? { ...r, ...patch } : r)));

@@ -79,6 +79,18 @@ export function PiecePreview({
             <circle cx={el.center.x} cy={el.center.y} r={3} fill="#111" />
           </g>
         ))}
+        {(print.boxes ?? []).map((bx, i) => (
+          <rect
+            key={`b${i}`}
+            x={bx.center.x - bx.sizeMm / 2}
+            y={bx.center.y - bx.sizeMm / 2}
+            width={bx.sizeMm}
+            height={bx.sizeMm}
+            fill="none"
+            stroke={bx.color}
+            strokeWidth={Math.max(bx.strokeMm, 1.5)}
+          />
+        ))}
         {print.texts.map((t, i) => (
           <text
             key={i}

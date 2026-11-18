@@ -51,7 +51,9 @@ export function defaultDesignConfig(): DesignConfig {
       pieceKinds: ["frente", "espalda", "manga_izq", "manga_der"],
       fromRightMm: 30, // relevamiento: 3 cm del costado
       fromBaseMm: 70, // relevamiento: 7 cm de la base
-      heightMm: 10, // SUPUESTO
+      heightMm: 8, // como en la moldería: talle de ~8 mm adentro de un cuadrado de 18 mm
+      box: { sizeMm: 18, strokeMm: 0.6 }, // el "cubito"
+      color: "auto",
     },
     safeMarginMm: 10, // relevamiento
   };

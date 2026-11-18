@@ -163,7 +163,22 @@ export async function exportRollPdf(layout: RollLayout, background: BackgroundRu
       }
       page.pushOperators(popGraphicsState());
 
-      // 3. Textos: nombre, número, talle. Matriz local con Y hacia arriba,
+      // 3. Recuadros (etiqueta de talle).
+      for (const bx of print.boxes ?? []) {
+        const c = hexToRgb(bx.color);
+        const h = bx.sizeMm / 2, t = bx.strokeMm;
+        const outerSq = [
+          { x: bx.center.x - h, y: bx.center.y - h }, { x: bx.center.x + h, y: bx.center.y - h },
+          { x: bx.center.x + h, y: bx.center.y + h }, { x: bx.center.x - h, y: bx.center.y + h },
+        ];
+        const innerSq = [
+          { x: bx.center.x - h + t, y: bx.center.y - h + t }, { x: bx.center.x - h + t, y: bx.center.y + h - t },
+          { x: bx.center.x + h - t, y: bx.center.y + h - t }, { x: bx.center.x + h - t, y: bx.center.y - h + t },
+        ];
+        page.pushOperators(pushGraphicsState(), cm(pieceToPage), setFillingRgbColor(c.red, c.green, c.blue), ...pathOps(outerSq), ...pathOps(innerSq), fillEvenOdd(), popGraphicsState());
+      }
+
+      // 4. Textos: nombre, número, talle. Matriz local con Y hacia arriba,
       //    para que el texto no salga espejado ni dado vuelta.
       for (const t of print.texts) {
         const font = fonts[t.style.font] ?? helvetica;
@@ -176,7 +191,7 @@ export async function exportRollPdf(layout: RollLayout, background: BackgroundRu
         page.pushOperators(popGraphicsState());
       }
 
-      // 4. Contorno láser: anillo negro entre la línea y +3 mm.
+      // 5. Contorno láser: anillo negro entre la línea y +3 mm.
       const outerInPiece = applyInverse(pieceToRoll, placed.outer);
       page.pushOperators(
         pushGraphicsState(),

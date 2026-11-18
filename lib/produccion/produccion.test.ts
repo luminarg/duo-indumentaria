@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { PDFDocument } from "pdf-lib";
 import { assemblyTransforms, DEFAULT_ASSEMBLY, shoulderTip, sizeScale } from "./assembly";
-import { approxMeasurer, buildPrintPieces } from "./build";
+import { approxMeasurer, buildPrintPieces, contrastOn } from "./build";
 import { defaultDesignConfig } from "./defaults";
 import { exportRollPdf, splitSegments } from "./exportPdf";
 import { apply, area, bbox, compose, minDistance, offset } from "./geometry";
@@ -135,13 +135,20 @@ describe("nombre, número y etiqueta", () => {
     expect(short.text).toBe("PÉREZ");
   });
 
-  it("etiqueta de talle a 3 cm del costado derecho y 7 cm de la base, medida al borde", () => {
+  it("etiqueta de talle en un cuadrado, a 3 cm del costado derecho y 7 cm de la base, medida al borde", () => {
     const front = prints.find((p) => p.garment.orderItemId === "a" && p.piece.kind === "frente")!;
+    const box = front.boxes[0];
     const tag = front.texts.find((t) => t.kind === "talle")!;
     const b = bbox(front.piece.outline);
-    expect(tag.center.x + tag.widthMm / 2).toBeCloseTo(b.maxX - 30, 6);
-    expect(tag.center.y + tag.heightMm / 2).toBeCloseTo(b.maxY - 70, 6);
+    expect(box.center.x + box.sizeMm / 2).toBeCloseTo(b.maxX - 30, 6);
+    expect(box.center.y + box.sizeMm / 2).toBeCloseTo(b.maxY - 70, 6);
+    expect(tag.center).toEqual(box.center);
     expect(tag.text).toBe("L");
+  });
+
+  it("el color de la etiqueta contrasta con el fondo", () => {
+    expect(contrastOn("#003c67")).toBe("#FFFFFF");
+    expect(contrastOn("#FFFFFF")).toBe("#141414");
   });
 });
 
@@ -299,5 +306,24 @@ describe("diseño hecho sobre un talle", () => {
     const back = apply(m, { x: W - p0.x + 10, y: H - p0.y + 20 });
     expect(back.x).toBeCloseTo(p0.x, 6);
     expect(back.y).toBeCloseTo(p0.y, 6);
+  });
+});
+
+describe("giro de 180° en la tizada", () => {
+  it("encastra un par de mangas girando una, respetando los 6 mm", () => {
+    // Manga simplificada: angosta arriba (copa), ancha abajo.
+    const manga = [
+      { x: 150, y: 0 }, { x: 350, y: 0 }, { x: 500, y: 250 }, { x: 0, y: 250 },
+    ];
+    const pieces: PatternPiece[] = ["manga_izq", "manga_der"].map((kind, i) => ({
+      id: `t${i}`, modelId: "t", sizeLabel: "L", kind: kind as PatternPiece["kind"], outline: manga,
+    }));
+    const design0 = { ...defaultDesignConfig(), elements: [], sizeTag: { ...defaultDesignConfig().sizeTag, enabled: false } };
+    const { prints } = buildPrintPieces({ pieces, assembly: DEFAULT_ASSEMBLY, design: design0, garments: [{ orderItemId: "a", sizeLabel: "L", variant: "jugador" }], measure: approxMeasurer });
+    // En 1000 mm no entran dos mangas derechas una al lado de la otra (2 × 512).
+    const layout = nest(prints, { ...DEFAULT_SETTINGS, rollWidthMm: 1000 });
+    expect(layout.placed.map((p) => p.rotation).sort()).toEqual([0, 180]);
+    expect(layout.lengthMm).toBeLessThan(300); // una sola fila, no dos
+    expect(minDistance(layout.placed[0].outer, layout.placed[1].outer)).toBeGreaterThanOrEqual(6);
   });
 });

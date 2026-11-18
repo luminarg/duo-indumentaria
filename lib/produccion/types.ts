@@ -109,7 +109,12 @@ export type SizeTagRule = {
   fromRightMm: number;
   /** Distancia del borde inferior de la etiqueta a la línea de base. */
   fromBaseMm: number;
+  /** Alto del texto del talle. */
   heightMm: number;
+  /** Recuadro (el "cubito"): cuadrado con el talle adentro. null = solo el texto. */
+  box?: { sizeMm: number; strokeMm: number } | null;
+  /** Color de texto y recuadro: "auto" = blanco sobre fondos oscuros, negro sobre claros. */
+  color?: string;
 };
 
 /** Dónde está una pieza dentro del PDF de diseño (ver designDetect.ts). */
@@ -216,6 +221,8 @@ export type PrintPiece = {
   backgroundClip?: Poly | null;
   elements: PlacedElement[];
   texts: PlacedText[];
+  /** Recuadros (etiqueta de talle). */
+  boxes: { center: Pt; sizeMm: number; strokeMm: number; color: string }[];
   warnings: Warning[];
 };
 

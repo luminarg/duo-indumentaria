@@ -20,7 +20,7 @@ export default async function MoldesPage() {
     <div>
       <PageHeader
         title="Moldería"
-        description="Modelos de molde por artículo. Cada talle se importa desde un SVG exportado de Corel, con las piezas a escala real."
+        description="Modelos de molde por artículo. La moldería se importa desde Corel (PDF o SVG, a escala real), con uno o todos los talles."
       />
       <MoldesManager models={models ?? []} summary={summary} articleTypes={articleTypes ?? []} />
     </div>

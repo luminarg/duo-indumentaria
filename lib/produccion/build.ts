@@ -45,6 +45,14 @@ function fitText(
 
 export const DESIGN_CLIP_INSET_MM = 1.5;
 
+/** Blanco sobre fondos oscuros, casi negro sobre claros. */
+export function contrastOn(bg?: string | null): string {
+  if (!bg || !/^#?[0-9a-f]{6}$/i.test(bg.replace("#", "").padStart(6, "0"))) return "#141414";
+  const n = parseInt(bg.replace("#", ""), 16);
+  const lum = (0.2126 * ((n >> 16) & 255) + 0.7152 * ((n >> 8) & 255) + 0.0722 * (n & 255)) / 255;
+  return lum < 0.5 ? "#FFFFFF" : "#141414";
+}
+
 /**
  * Modo "piezas": lienzo del diseño → pieza de otro talle.
  * Primero se lleva el arte a la pieza del talle base (deshaciendo su lugar y
@@ -153,12 +161,18 @@ export function buildPrintPieces({ pieces, assembly, design, garments, measure }
       }
 
       // Etiqueta de talle: abajo a la derecha del dibujo, medida a su borde.
+      // Con recuadro (el "cubito"), la medida es al borde del cuadrado.
       const tag = design.sizeTag;
+      const boxes: PrintPiece["boxes"] = [];
       if (tag.enabled && tag.pieceKinds.includes(piece.kind)) {
-        const style: TextStyle = { font: "Helvetica-Bold", fill: "#141414" };
+        const color = !tag.color || tag.color === "auto" ? contrastOn(design.background.color) : tag.color;
+        const style: TextStyle = { font: "Helvetica-Bold", fill: color };
         const w = measure(piece.sizeLabel, style.font, tag.heightMm);
-        const cx = b.maxX - tag.fromRightMm - w / 2;
-        const cy = baselineY(piece) - tag.fromBaseMm - tag.heightMm / 2;
+        const side = tag.box ? Math.max(tag.box.sizeMm, w + 4) : w;
+        const boxH = tag.box ? tag.box.sizeMm : tag.heightMm;
+        const cx = b.maxX - tag.fromRightMm - side / 2;
+        const cy = baselineY(piece) - tag.fromBaseMm - boxH / 2;
+        if (tag.box) boxes.push({ center: { x: cx, y: cy }, sizeMm: side, strokeMm: tag.box.strokeMm, color });
         texts.push({ kind: "talle", text: piece.sizeLabel, center: { x: cx, y: cy }, heightMm: tag.heightMm, widthMm: w, style });
       }
 
@@ -187,6 +201,7 @@ export function buildPrintPieces({ pieces, assembly, design, garments, measure }
         backgroundClip: bgClip,
         elements,
         texts,
+        boxes,
         warnings: pieceWarnings,
       });
       warnings.push(...pieceWarnings);

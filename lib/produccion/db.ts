@@ -53,6 +53,7 @@ export function normalizeConfig(raw: unknown, baseSizeLabel?: string): DesignCon
     number: { ...d.number, ...(c.number ?? {}) },
     name: { ...d.name, ...(c.name ?? {}) },
     sizeTag: { ...d.sizeTag, ...(c.sizeTag ?? {}) },
+    // (box y color tienen default en d.sizeTag: los diseños viejos los heredan)
     elements: c.elements ?? d.elements,
   };
 }

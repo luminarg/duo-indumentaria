@@ -304,6 +304,14 @@ export function ProductionWorkbench(props: {
         </div>
       </Card>
 
+      {(busy || message || error) && (
+        <div className="flex flex-col gap-1" aria-live="polite">
+          {busy && <p className="rounded-md bg-zinc-100 px-4 py-3 text-sm text-zinc-700">{busy}</p>}
+          {message && <p className="rounded-md bg-green-50 px-4 py-3 text-sm text-green-800">{message}</p>}
+          {error && <p className="rounded-md bg-red-50 px-4 py-3 text-sm text-red-700">{error}</p>}
+        </div>
+      )}
+
       {missingPieces && <p className="text-sm text-red-600">Este molde todavía no tiene piezas cargadas.</p>}
       {build.missingSizes.length > 0 && (
         <p className="text-sm text-red-600">Faltan piezas del molde para los talles: {build.missingSizes.join(", ")}.</p>
@@ -323,7 +331,7 @@ export function ProductionWorkbench(props: {
                 {previewBySize.map(({ size, prints }) => (
                   <div key={size} className="flex gap-2 rounded-md border border-zinc-200 p-2">
                     {prints.map((p) => (
-                      <PiecePreview key={p.key} print={p} safeMarginMm={config.safeMarginMm} contourMm={DEFAULT_SETTINGS.contourMm} bgColor={config.background.color} height={220} />
+                      <PiecePreview key={p.key} print={p} safeMarginMm={config.safeMarginMm} contourMm={DEFAULT_SETTINGS.contourMm} bgColor={config.background.color} height={170} />
                     ))}
                   </div>
                 ))}
@@ -348,9 +356,6 @@ export function ProductionWorkbench(props: {
               <Button variant="secondary" onClick={onDownload} disabled={!!busy || !layout}>Descargar PDF</Button>
               <Button onClick={onSaveRoll} disabled={!!busy || !layout || modelId === SAMPLE}>Guardar y pasar a sublimación</Button>
             </div>
-            {busy && <p className="text-sm text-zinc-500">{busy}</p>}
-            {message && <p className="text-sm text-green-700">{message}</p>}
-            {error && <p className="text-sm text-red-600">{error}</p>}
             {layout && (
               <div className="mt-3 flex flex-col gap-3">
                 <p className="text-sm text-zinc-700">
@@ -451,7 +456,7 @@ function DesignForm({
         </label>
         {config.background.filePath && config.background.mode === "piezas" && (
           <p className="text-xs text-zinc-500">
-            Hecho sobre el talle {config.baseSizeLabel}. Piezas reconocidas: {Object.keys(config.background.pieces ?? {}).join(", ") || "ninguna"}. Cada talle toma el arte de su pieza, escalado en proporción.
+            Hecho sobre el talle {config.baseSizeLabel}. Piezas reconocidas: {Object.keys(config.background.pieces ?? {}).map((k) => PIECE_OPTIONS.find((o) => o.value === k)?.label.toLowerCase() ?? k).join(", ") || "ninguna"}. Cada talle toma el arte de su pieza, escalado en proporción.
           </p>
         )}
         {config.background.filePath && config.background.mode === "lienzo" && (
@@ -569,6 +574,16 @@ function DesignForm({
           <input type="checkbox" checked={config.sizeTag.enabled} onChange={(e) => update((c) => ({ ...c, sizeTag: { ...c.sizeTag, enabled: e.target.checked } }))} />
           Etiqueta de talle ({config.sizeTag.fromRightMm / 10} cm del costado, {config.sizeTag.fromBaseMm / 10} cm de la base)
         </label>
+        {config.sizeTag.enabled && (
+          <label className="flex items-center gap-2 pl-6 text-xs text-zinc-600">
+            <input
+              type="checkbox"
+              checked={!!config.sizeTag.box}
+              onChange={(e) => update((c) => ({ ...c, sizeTag: { ...c.sizeTag, box: e.target.checked ? { sizeMm: 18, strokeMm: 0.6 } : null } }))}
+            />
+            Dentro de un cuadrado de 18 mm (color automático según el fondo)
+          </label>
+        )}
       </Card>
     </div>
   );
