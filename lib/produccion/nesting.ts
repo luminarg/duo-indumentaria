@@ -11,8 +11,10 @@ import type { Affine, BBox, PlacedPiece, Poly, PrintPiece, ProductionSettings, R
 //
 // Giro de 180°: está permitido en todas las piezas (respeta el hilo de la
 // tela). Se usa para:
-//   - Encastrar las mangas de a pares: una derecha y la otra girada, con la
-//     copa de una en el hueco de la otra. El par se acomoda como una unidad.
+//   - Armar tiras de mangas alternadas (girada, derecha, girada…), cada una
+//     con la copa en el hueco de la vecina; las filas se apoyan por el lado
+//     recto. También se prueban pares sueltos y mangas sueltas, y se queda
+//     lo que menos rollo gasta.
 //   - Elegir, para cada pieza o par, la orientación que menos rollo gasta.
 //
 // Algoritmo: cada unidad se ubica por su rectángulo (skyline: lo más arriba
@@ -113,9 +115,78 @@ function sleevePair(a: PrintPiece, b: PrintPiece, s: ProductionSettings): Unit |
   );
 }
 
+/**
+ * Tira de mangas: todas alternadas (girada, derecha, girada, derecha…), cada
+ * una corrida hacia la izquierda hasta tocar a la anterior respetando la
+ * separación. Las derechas bajan `dy` para que la copa entre más en el hueco
+ * de la vecina. Se prueban varios `dy` y se queda el que menos superficie
+ * gasta por manga. Las tiras se cortan al ancho útil del rollo.
+ */
+function sleeveChains(list: PrintPiece[], s: ProductionSettings, usable: number): Unit[] {
+  if (!list.length) return [];
+  const prepared = list.map((p) => {
+    const fp = footprintOf(p, s);
+    return { p, o: { 0: oriented(p, fp, 0), 180: oriented(p, fp, 180) } as Record<0 | 180, ReturnType<typeof oriented>> };
+  });
+  const h = Math.max(...prepared.map((x) => x.o[0].h));
+  const build = (dyFrac: number) => {
+    const dy = dyFrac * h;
+    const chains: { members: { print: PrintPiece; outline: Poly }[]; polys: Poly[] }[] = [];
+    let cur: (typeof chains)[number] | null = null;
+    let lastX = 0, lastW = 0, idx = 0;
+    for (const item of prepared) {
+      if (!cur) { cur = { members: [], polys: [] }; chains.push(cur); idx = 0; lastX = 0; lastW = 0; }
+      const rot: 0 | 180 = idx % 2 === 0 ? 180 : 0;
+      const o = item.o[rot];
+      const y = rot === 0 ? dy : 0;
+      let x = cur.polys.length ? lastX + lastW : 0;
+      const prev = cur.polys.slice(-2);
+      const fits = (xx: number) => prev.every((q) => intersectionArea(shift(o.fp, xx, y), q) <= 0.01);
+      if (cur.polys.length) for (const step of [20, 5, 1, 0.25]) while (x - step >= 0 && fits(x - step)) x -= step;
+      if (x + o.w > usable + 1e-6 && cur.polys.length) {
+        // No entra: arranca otra tira.
+        cur = { members: [], polys: [] }; chains.push(cur); idx = 0; x = 0;
+        const o2 = item.o[180];
+        cur.members.push({ print: item.p, outline: o2.outline });
+        cur.polys.push(o2.fp);
+        lastX = 0; lastW = o2.w; idx = 1;
+        continue;
+      }
+      cur.members.push({ print: item.p, outline: shift(o.outline, x, y) });
+      cur.polys.push(shift(o.fp, x, y));
+      lastX = x; lastW = o.w; idx++;
+    }
+    const total = chains.reduce((acc, c) => { const b = bbox(c.polys.flat()); return acc + (b.maxX - b.minX) * (b.maxY - b.minY); }, 0);
+    return { chains, perSleeve: total / prepared.length };
+  };
+  let best: ReturnType<typeof build> | null = null;
+  for (const f of [0, 0.1, 0.2, 0.3, 0.4]) {
+    const r = build(f);
+    if (!best || r.perSleeve < best.perSleeve - 1) best = r;
+  }
+  return best!.chains.map((c) => finishUnit(c.members, c.polys));
+}
+
 /** Agrupa las mangas de cada prenda en pares encastrados; el resto va suelto. */
-function buildUnits(prints: PrintPiece[], s: ProductionSettings, pairSleeves: boolean, usable: number): Unit[] {
-  if (!pairSleeves) return prints.map((p) => singleUnit(p, s));
+type SleeveMode = "tira" | "pares" | "sueltas";
+
+function buildUnits(prints: PrintPiece[], s: ProductionSettings, mode: SleeveMode, usable: number, chainFrac = 1): Unit[] {
+  if (mode === "sueltas") return prints.map((p) => singleUnit(p, s));
+  if (mode === "tira") {
+    const isSleeve = (p: PrintPiece) => p.piece.kind === "manga_izq" || p.piece.kind === "manga_der";
+    const units = prints.filter((p) => !isSleeve(p)).map((p) => singleUnit(p, s));
+    // Una tira por talle (las mangas de un mismo talle encastran parejo).
+    const bySize = new Map<string, PrintPiece[]>();
+    for (const p of prints.filter(isSleeve)) (bySize.get(p.piece.sizeLabel) ?? bySize.set(p.piece.sizeLabel, []).get(p.piece.sizeLabel)!).push(p);
+    // Una parte de las mangas va en tiras (filas completas) y el resto suelta,
+    // para rellenar los huecos que dejan los cuerpos.
+    for (const list of bySize.values()) {
+      const k = Math.round(list.length * chainFrac);
+      units.push(...sleeveChains(list.slice(0, k), s, usable));
+      units.push(...list.slice(k).map((p) => singleUnit(p, s)));
+    }
+    return units;
+  }
   const units: Unit[] = [];
   const sleeves = new Map<string, PrintPiece[]>();
   for (const p of prints) {
@@ -230,17 +301,19 @@ function placeInBand(band: Band, u: Unit, usable: number, maxLen: number, s: Pro
 export function nest(prints: PrintPiece[], settings: ProductionSettings = DEFAULT_SETTINGS): RollLayout {
   const usable = settings.rollWidthMm - 2 * settings.edgeMarginMm;
   const maxLen = settings.maxSegmentLengthMm;
-  // Dos estrategias: mangas encastradas de a pares, o sueltas (a veces una
-  // manga sola entra en la franja que dejan dos cuerpos y el par no).
-  const strategies = settings.rotations.includes(180) ? [true, false] : [false];
+  // Mangas en tiras alternadas (todas o una parte, el resto rellena huecos
+  // al lado de los cuerpos), de a pares o sueltas: se queda la que gasta menos.
+  const strategies: SleeveMode[] = settings.rotations.includes(180) ? ["tira", "pares", "sueltas"] : ["sueltas"];
   const orders: ((a: Unit, b: Unit) => number)[] = [
     (a, b) => b.h - a.h || b.area - a.area,
     (a, b) => b.area - a.area,
     (a, b) => b.w - a.w || b.h - a.h,
   ];
   let best: RollLayout | null = null;
-  for (const pair of strategies) {
-    const units = buildUnits(prints, settings, pair, usable);
+  const runs: [SleeveMode, number][] = strategies.flatMap((m): [SleeveMode, number][] =>
+    m === "tira" ? [["tira", 1], ["tira", 0.75], ["tira", 0.5], ["tira", 0.25]] : [[m, 1]]);
+  for (const [mode, frac] of runs) {
+    const units = buildUnits(prints, settings, mode, usable, frac);
     for (const u of units) {
       const p = u.members[0].print.piece;
       if (u.w > usable) throw new Error(`La pieza ${p.kind} talle ${p.sizeLabel} no entra en el ancho del rollo`);
