@@ -16,6 +16,8 @@ import type {
 } from "./types";
 
 /** Ancho en mm de un texto con alto de mayúsculas `capHeightMm`. */
+export const DEFAULT_FONT = "Helvetica-Bold";
+
 export type TextMeasurer = (text: string, font: string, capHeightMm: number) => number;
 
 /** Medidor aproximado (0,62 × alto por carácter) para pruebas y vista previa sin fuentes. */
@@ -194,7 +196,7 @@ export function buildPrintPieces({ pieces, assembly, design, garments, measure }
       const boxes: PrintPiece["boxes"] = [];
       if (tag.enabled && tag.pieceKinds.includes(piece.kind)) {
         const color = !tag.color || tag.color === "auto" ? contrastOn(design.background.color) : tag.color;
-        const style: TextStyle = { font: "Helvetica-Bold", fill: color };
+        const style: TextStyle = { font: tag.font || DEFAULT_FONT, fill: color };
         const w = measure(piece.sizeLabel, style.font, tag.heightMm);
         const center = cornerPlacement(piece.outline, w, tag.heightMm, tag.marginMm, tag.corner);
         if (center) texts.push({ kind: "talle", text: piece.sizeLabel, center, heightMm: tag.heightMm, widthMm: w, style });
@@ -211,7 +213,7 @@ export function buildPrintPieces({ pieces, assembly, design, garments, measure }
         if (ind.artPath) elements.push({ elementId: "indicador-talle", label: "Indicador de talle", center, widthMm: w, heightMm: h, filePath: ind.artPath });
         else boxes.push({ center, widthMm: w, heightMm: h, strokeMm: 0.6, color: contrastOn(design.background.color) });
         const textCenter = { x: center.x - w / 2 + ind.textX * w, y: center.y - h / 2 + ind.textY * h };
-        const style: TextStyle = { font: "Helvetica-Bold", fill: ind.textColor || "#FFFFFF" };
+        const style: TextStyle = { font: ind.font || DEFAULT_FONT, fill: ind.textColor || "#FFFFFF" };
         texts.push({ kind: "talle", text: piece.sizeLabel, center: textCenter, heightMm: ind.textHeightMm, widthMm: measure(piece.sizeLabel, style.font, ind.textHeightMm), style });
         if (safeZoneOverflow(piece, center, w, h, design.safeMarginMm) > 1) {
           pieceWarnings.push({ pieceId: piece.id, message: `El indicador de talle queda a menos de ${design.safeMarginMm} mm del borde en talle ${piece.sizeLabel}` });

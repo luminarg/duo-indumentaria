@@ -346,3 +346,55 @@ describe("giro de 180° en la tizada", () => {
     expect(minDistance(layout.placed[0].outer, layout.placed[1].outer)).toBeGreaterThanOrEqual(6);
   });
 });
+
+import { existsSync, readFileSync } from "fs";
+import fontkit from "@pdf-lib/fontkit";
+import { PDFDict, PDFName } from "pdf-lib";
+import { fontNameFromPath, fontSlug, usedFonts } from "./fonts";
+import { pdfMeasurer } from "./exportPdf";
+
+describe("fuentes subidas", () => {
+  it("nombre legible, nombre de archivo seguro y fuentes usadas", () => {
+    expect(fontNameFromPath("fuentes/Bebas-Neue--ab12cd34.ttf")).toBe("Bebas Neue");
+    expect(fontNameFromPath("Helvetica-Bold")).toBe("Helvetica Bold");
+    expect(fontSlug("Fútbol Pro (v2).OTF")).toBe("Futbol-Pro-v2");
+    const d = defaultDesignConfig();
+    d.number.style.font = "fuentes/A--1.ttf";
+    d.name.style.font = "fuentes/A--1.ttf";
+    d.sizeIndicator.font = "fuentes/B--2.otf";
+    expect(usedFonts(d).sort()).toEqual(["fuentes/A--1.ttf", "fuentes/B--2.otf"]);
+  });
+
+  // Usa fuentes del sistema si están (Linux); en otras máquinas se saltea.
+  const TTF = "/usr/share/fonts/truetype/dejavu/DejaVuSerif-Bold.ttf";
+  const OTF = "/usr/share/fonts/opentype/inter/InterDisplay-MediumItalic.otf";
+  it.skipIf(!existsSync(TTF) || !existsSync(OTF))("mide y embebe .ttf y .otf en el rollo", async () => {
+    const fonts = { "fuentes/Deja--1.ttf": new Uint8Array(readFileSync(TTF)), "fuentes/Inter--2.otf": new Uint8Array(readFileSync(OTF)) };
+    const doc = await PDFDocument.create();
+    doc.registerFontkit(fontkit);
+    const helv = await doc.embedFont("Helvetica-Bold");
+    const measure = pdfMeasurer({ "fuentes/Deja--1.ttf": await doc.embedFont(fonts["fuentes/Deja--1.ttf"]), "fuentes/Inter--2.otf": await doc.embedFont(fonts["fuentes/Inter--2.otf"]) }, helv);
+    expect(measure("10", "fuentes/Deja--1.ttf", 200)).not.toBeCloseTo(measure("10", "Helvetica-Bold", 200), 0);
+
+    const design = defaultDesignConfig();
+    design.number.style.font = "fuentes/Deja--1.ttf";
+    design.name.style.font = "fuentes/Inter--2.otf";
+    design.sizeTag.font = "fuentes/Inter--2.otf";
+    const garments: GarmentRequest[] = [{ orderItemId: "a", sizeLabel: "M", variant: "jugador", name: "Pérez", number: "10" }];
+    const { prints } = buildPrintPieces({ pieces: sampleMolds(), assembly: DEFAULT_ASSEMBLY, design, garments, measure });
+    const numero = prints.flatMap((p) => p.texts).find((t) => t.kind === "numero");
+    expect(numero?.style.font).toBe("fuentes/Deja--1.ttf");
+    const layout = nest(prints, DEFAULT_SETTINGS);
+    const { bytes } = await exportRollPdf(layout, design.background, { fonts });
+    const out = await PDFDocument.load(bytes);
+    expect(out.getPageCount()).toBeGreaterThan(0);
+    const names = out.context
+      .enumerateIndirectObjects()
+      .map(([, o]) => (o instanceof PDFDict ? o.get(PDFName.of("FontName")) : undefined))
+      .filter(Boolean)
+      .map(String)
+      .join(" ");
+    expect(names).toMatch(/DejaVuSerif-Bold/);
+    expect(names).toMatch(/InterDisplay/);
+  });
+});

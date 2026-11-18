@@ -1,22 +1,24 @@
 "use client";
 
-import { useEffect, useMemo, useState, useTransition } from "react";
-import { PDFDocument, StandardFonts } from "pdf-lib";
+import { useEffect, useId, useMemo, useState, useTransition } from "react";
+import { PDFDocument, StandardFonts, type PDFFont } from "pdf-lib";
+import fontkit from "@pdf-lib/fontkit";
 import { Card } from "../../../components/ui/Card";
 import { Button } from "../../../components/ui/Button";
 import { Input, Select } from "../../../components/ui/Input";
 import { approxMeasurer, buildPrintPieces, type TextMeasurer } from "@/lib/produccion/build";
 import { assemblyFromRows, garmentsFromItems, normalizeConfig, pieceFromRow, type AssemblyRow, type OrderItemRow, type PatternPieceRow } from "@/lib/produccion/db";
-import { exportRollPdf, pdfMeasurer } from "@/lib/produccion/exportPdf";
+import { capHeightRatio, exportRollPdf, pdfMeasurer } from "@/lib/produccion/exportPdf";
+import { cssFamilyFor, usedFonts, type FontEntry } from "@/lib/produccion/fonts";
 import { pdfPrimitives } from "@/lib/produccion/pdfImport";
 import { detectDesignPieces } from "@/lib/produccion/designDetect";
 import { DEFAULT_SETTINGS, nest } from "@/lib/produccion/nesting";
 import { sampleMolds } from "@/lib/produccion/sampleMolds";
 import { DEFAULT_ASSEMBLY } from "@/lib/produccion/assembly";
 import type { AnchoredElement, DesignConfig, PieceKind, RollLayout, WearerSide } from "@/lib/produccion/types";
-import { saveDesign, saveLayout, signedProductionUrls } from "../actions";
-import { downloadProductionFiles, uploadToProduction } from "../upload";
-import { PiecePreview, RollPreview } from "../Previews";
+import { listProductionFonts, saveDesign, saveLayout, signedProductionUrls } from "../actions";
+import { downloadProductionFiles, uploadFont, uploadToProduction } from "../upload";
+import { PiecePreview, RollPreview, type FontInfo } from "../Previews";
 
 const SAMPLE = "prueba";
 const ADULT_ORDER = ["XXS", "XS", "S", "M", "L", "XL", "2XL", "XXL", "3XL", "XXXL", "4XL", "5XL"];
@@ -72,18 +74,59 @@ export function ProductionWorkbench(props: {
     setLayout(null);
   };
 
+  // Fuentes: la biblioteca (lista) y los bytes de las que usa el diseño.
+  const [fontList, setFontList] = useState<FontEntry[]>([]);
+  const [fontBytes, setFontBytes] = useState<Record<string, Uint8Array>>({});
+  const [fontInfo, setFontInfo] = useState<FontInfo>({});
+  useEffect(() => {
+    listProductionFonts().then(setFontList).catch(() => setFontList([]));
+  }, []);
+  const neededFonts = usedFonts(config).join("|");
+  useEffect(() => {
+    const missing = neededFonts.split("|").filter((f) => f && !fontBytes[f]);
+    if (!missing.length) return;
+    let alive = true;
+    downloadProductionFiles(missing).then((got) => {
+      if (alive && Object.keys(got).length) setFontBytes((b) => ({ ...b, ...got }));
+    });
+    return () => {
+      alive = false;
+    };
+  }, [neededFonts, fontBytes]);
+
+  // Medidor con las métricas reales de cada fuente (mismo cálculo que el PDF)
+  // y registro de las fuentes en el navegador para la vista previa.
   const [measure, setMeasure] = useState<TextMeasurer>(() => approxMeasurer);
   useEffect(() => {
     let alive = true;
     (async () => {
       const doc = await PDFDocument.create();
-      const font = await doc.embedFont(StandardFonts.HelveticaBold);
-      if (alive) setMeasure(() => pdfMeasurer({ "Helvetica-Bold": font }, font));
+      doc.registerFontkit(fontkit);
+      const helvetica = await doc.embedFont(StandardFonts.HelveticaBold);
+      const embedded: Record<string, PDFFont> = { "Helvetica-Bold": helvetica };
+      const info: FontInfo = {};
+      for (const [path, bytes] of Object.entries(fontBytes)) {
+        try {
+          embedded[path] = await doc.embedFont(bytes);
+          const family = cssFamilyFor(path);
+          if (typeof FontFace !== "undefined") {
+            const face = new FontFace(family, bytes.slice().buffer);
+            await face.load();
+            document.fonts.add(face);
+          }
+          info[path] = { family, capRatio: capHeightRatio(embedded[path]) };
+        } catch {
+          // Fuente dañada o no soportada: se mide y dibuja con Helvetica.
+        }
+      }
+      if (!alive) return;
+      setMeasure(() => pdfMeasurer(embedded, helvetica));
+      setFontInfo(info);
     })();
     return () => {
       alive = false;
     };
-  }, []);
+  }, [fontBytes]);
 
   const [assets, setAssets] = useState<Record<string, Uint8Array>>({});
   const [busy, setBusy] = useState<string | null>(null);
@@ -212,6 +255,26 @@ export function ProductionWorkbench(props: {
       setMessage(`Indicador cargado: ${pdf.widthMm.toFixed(0)} × ${pdf.heightMm.toFixed(0)} mm. La letra del talle se agrega sola.`);
     });
 
+  const onFontFile = async (file: File): Promise<string | null> => {
+    let path: string | null = null;
+    await run("Subiendo fuente…", async () => {
+      if (!/\.(ttf|otf)$/i.test(file.name)) throw new Error("La fuente tiene que ser .ttf u .otf");
+      const bytes = new Uint8Array(await file.arrayBuffer());
+      // Se valida antes de subir: si pdf-lib no la puede embeber, no sirve para el rollo.
+      const test = await PDFDocument.create();
+      test.registerFontkit(fontkit);
+      await test.embedFont(bytes).catch(() => {
+        throw new Error("No se pudo leer la fuente. Probá con otro archivo .ttf u .otf.");
+      });
+      path = await uploadFont(file);
+      const p = path;
+      setFontBytes((b) => ({ ...b, [p]: bytes }));
+      setFontList(await listProductionFonts());
+      setMessage(`Fuente cargada: ${file.name}`);
+    });
+    return path;
+  };
+
   const onSaveDesign = () =>
     startTransition(async () => {
       setError(null);
@@ -246,7 +309,16 @@ export function ProductionWorkbench(props: {
     const ia = config.sizeIndicator.artPath;
     if (ia && all[ia]) elements[ia] = all[ia];
     const bg = config.background.filePath ? all[config.background.filePath] : null;
-    const { bytes } = await exportRollPdf(l, config.background, { background: bg, elements });
+    const fonts: Record<string, Uint8Array> = {};
+    const wanted = usedFonts(config);
+    const missingFonts = wanted.filter((f) => !fontBytes[f]);
+    const gotFonts = missingFonts.length ? await downloadProductionFiles(missingFonts) : {};
+    for (const f of wanted) {
+      const b = fontBytes[f] ?? gotFonts[f];
+      if (!b) throw new Error("No se encontró una fuente del diseño. Elegila de nuevo o subila otra vez.");
+      fonts[f] = b;
+    }
+    const { bytes } = await exportRollPdf(l, config.background, { background: bg, elements, fonts });
     return new Blob([bytes as BlobPart], { type: "application/pdf" });
   }
 
@@ -329,7 +401,7 @@ export function ProductionWorkbench(props: {
       )}
 
       <div className="grid gap-6 lg:grid-cols-[380px_1fr]">
-        <DesignForm config={config} update={update} onBackground={onBackground} onElementFile={onElementFile} onIndicatorFile={onIndicatorFile} />
+        <DesignForm config={config} update={update} onBackground={onBackground} onElementFile={onElementFile} onIndicatorFile={onIndicatorFile} fonts={fontList} onFontFile={onFontFile} />
 
         <div className="flex flex-col gap-4">
           <Card>
@@ -342,7 +414,7 @@ export function ProductionWorkbench(props: {
                 {previewBySize.map(({ size, prints }) => (
                   <div key={size} className="flex gap-2 rounded-md border border-zinc-200 p-2">
                     {prints.map((p) => (
-                      <PiecePreview key={p.key} print={p} safeMarginMm={config.safeMarginMm} contourMm={DEFAULT_SETTINGS.contourMm} bgColor={config.background.color} height={170} />
+                      <PiecePreview key={p.key} print={p} fontInfo={fontInfo} safeMarginMm={config.safeMarginMm} contourMm={DEFAULT_SETTINGS.contourMm} bgColor={config.background.color} height={170} />
                     ))}
                   </div>
                 ))}
@@ -436,13 +508,20 @@ function DesignForm({
   onBackground,
   onElementFile,
   onIndicatorFile,
+  fonts,
+  onFontFile,
 }: {
   config: DesignConfig;
   update: (fn: (c: DesignConfig) => DesignConfig) => void;
   onBackground: (f: File) => void;
   onElementFile: (idx: number, f: File) => void;
   onIndicatorFile: (f: File) => void;
+  fonts: FontEntry[];
+  onFontFile: (f: File) => Promise<string | null>;
 }) {
+  const fontSelect = (label: string, value: string | undefined, set: (font: string) => void) => (
+    <FontSelect label={label} value={value} fonts={fonts} onChange={set} onUpload={async (f) => { const p = await onFontFile(f); if (p) set(p); }} />
+  );
   const setEl = (i: number, patch: Partial<AnchoredElement>) =>
     update((c) => {
       c.elements[i] = { ...c.elements[i], ...patch };
@@ -558,6 +637,7 @@ function DesignForm({
             <Num label="Alto adulto (mm)" value={config.number.heightMm.adulto} onChange={(n) => update((c) => ({ ...c, number: { ...c.number, heightMm: { ...c.number.heightMm, adulto: n } } }))} />
             <Num label="Alto niño (mm)" value={config.number.heightMm.nino} onChange={(n) => update((c) => ({ ...c, number: { ...c.number, heightMm: { ...c.number.heightMm, nino: n } } }))} />
             <Num label="Centro, unidades desde el hombro" step={0.1} value={config.number.fromShoulderTopUnits} onChange={(n) => update((c) => ({ ...c, number: { ...c.number, fromShoulderTopUnits: n } }))} />
+            {fontSelect("Fuente del número", config.number.style.font, (font) => update((c) => ({ ...c, number: { ...c.number, style: { ...c.number.style, font } } })))}
             <label className="flex items-end gap-2 pb-2 text-xs text-zinc-600">
               <input
                 type="checkbox"
@@ -581,6 +661,7 @@ function DesignForm({
           <div className="grid grid-cols-2 gap-2">
             <Num label="Alto (mm)" value={config.name.heightMm} onChange={(n) => update((c) => ({ ...c, name: { ...c.name, heightMm: n } }))} hint="Si no entra, se achica en proporción" />
             <Num label="Centro, unidades desde el hombro" step={0.1} value={config.name.fromShoulderTopUnits} onChange={(n) => update((c) => ({ ...c, name: { ...c.name, fromShoulderTopUnits: n } }))} />
+            {fontSelect("Fuente del nombre", config.name.style.font, (font) => update((c) => ({ ...c, name: { ...c.name, style: { ...c.name.style, font } } })))}
           </div>
         )}
         <label className="flex items-center gap-2 text-sm font-medium text-zinc-900">
@@ -594,6 +675,7 @@ function DesignForm({
               <option value="izquierda">Izquierda</option>
             </Select>
             <Num label="Alto (mm)" value={config.sizeTag.heightMm} onChange={(n) => update((c) => ({ ...c, sizeTag: { ...c.sizeTag, heightMm: n } }))} hint="Contra el borde, dentro del ruedo" />
+            {fontSelect("Fuente", config.sizeTag.font, (font) => update((c) => ({ ...c, sizeTag: { ...c.sizeTag, font } })))}
           </div>
         )}
       </Card>
@@ -627,10 +709,65 @@ function DesignForm({
                 <option value="0.5">Al centro</option>
                 <option value="0.85">Abajo</option>
               </Select>
+              <Num label="Alto de la letra (mm)" value={config.sizeIndicator.textHeightMm} onChange={(n) => update((c) => ({ ...c, sizeIndicator: { ...c.sizeIndicator, textHeightMm: n } }))} />
+              {fontSelect("Fuente de la letra", config.sizeIndicator.font, (font) => update((c) => ({ ...c, sizeIndicator: { ...c.sizeIndicator, font } })))}
             </div>
           </div>
         )}
       </Card>
+    </div>
+  );
+}
+
+const UPLOAD = "__subir__";
+
+/** Selector de fuente: Helvetica Bold, las fuentes subidas, o subir una nueva. */
+function FontSelect({
+  label,
+  value,
+  fonts,
+  onChange,
+  onUpload,
+}: {
+  label: string;
+  value: string | undefined;
+  fonts: FontEntry[];
+  onChange: (font: string) => void;
+  onUpload: (f: File) => void;
+}) {
+  const inputId = "font-" + useId().replace(/:/g, "");
+  const current = value || "Helvetica-Bold";
+  const known = current === "Helvetica-Bold" || fonts.some((f) => f.path === current);
+  return (
+    <div className="flex flex-col">
+      <Select
+        label={label}
+        value={current}
+        onChange={(e) => {
+          if (e.target.value === UPLOAD) document.getElementById(inputId)?.click();
+          else onChange(e.target.value);
+        }}
+      >
+        <option value="Helvetica-Bold">Helvetica Bold</option>
+        {fonts.map((f) => (
+          <option key={f.path} value={f.path}>
+            {f.name}
+          </option>
+        ))}
+        {!known && <option value={current}>(fuente no encontrada)</option>}
+        <option value={UPLOAD}>Subir fuente .ttf / .otf…</option>
+      </Select>
+      <input
+        id={inputId}
+        type="file"
+        accept=".ttf,.otf,font/ttf,font/otf"
+        className="hidden"
+        onChange={(e) => {
+          const f = e.target.files?.[0];
+          if (f) onUpload(f);
+          e.target.value = "";
+        }}
+      />
     </div>
   );
 }

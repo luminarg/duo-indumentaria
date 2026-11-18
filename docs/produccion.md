@@ -117,3 +117,11 @@ pasar por una Server Action.
 - Borde (contorno) en nombres y números, y tipografías propias por diseño.
 - Marcar el arquero desde el formulario del pedido: la columna
   `order_items.variant` ya existe.
+
+## Fuentes
+
+- Se suben desde cualquier selector de fuente del diseño ("Subir fuente .ttf / .otf…"). Quedan en la biblioteca común (`production-files/fuentes/`), disponibles para todos los pedidos.
+- Se elige una fuente por separado para el **número**, el **nombre**, el **talle de la esquina** y la **letra del indicador**. Por defecto, Helvetica Bold.
+- El alto configurado es el de las mayúsculas/cifras: el sistema lo respeta con cualquier fuente, y el ancho del nombre se mide con la fuente real (si no entra, se achica).
+- En el PDF del rollo la fuente va embebida (solo los caracteres usados), así que la impresora no necesita tenerla instalada.
+- Si se borra una fuente que usa un diseño guardado, el PDF no se genera hasta elegir otra.

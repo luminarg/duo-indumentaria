@@ -1,7 +1,7 @@
 "use client";
 
 import { createClient } from "@/lib/supabase/client";
-import { createProductionUpload, signedProductionUrls } from "./actions";
+import { createFontUpload, createProductionUpload, signedProductionUrls } from "./actions";
 
 /** Sube un archivo directo del navegador al bucket privado y devuelve su ruta. */
 export async function uploadToProduction(folder: string, file: Blob, ext: string): Promise<string> {
@@ -29,4 +29,15 @@ export async function downloadProductionFiles(paths: string[]): Promise<Record<s
     })
   );
   return out;
+}
+
+/** Sube una fuente (.ttf/.otf) a la biblioteca y devuelve su ruta. */
+export async function uploadFont(file: File): Promise<string> {
+  const { path, token } = await createFontUpload(file.name);
+  const supabase = createClient();
+  const { error } = await supabase.storage.from("production-files").uploadToSignedUrl(path, token, file, {
+    contentType: /\.otf$/i.test(file.name) ? "font/otf" : "font/ttf",
+  });
+  if (error) throw new Error("No se pudo subir la fuente: " + error.message);
+  return path;
 }

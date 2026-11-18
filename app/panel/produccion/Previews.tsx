@@ -4,6 +4,9 @@ import { bbox, offset } from "@/lib/produccion/geometry";
 import { gridUnit, shoulderTop } from "@/lib/produccion/rules";
 import type { Poly, PrintPiece, RollLayout } from "@/lib/produccion/types";
 
+/** Fuentes subidas ya registradas en el navegador: familia CSS y alto de mayúsculas. */
+export type FontInfo = Record<string, { family: string; capRatio: number }>;
+
 const pathD = (poly: Poly) => `M${poly.map((p) => `${p.x.toFixed(1)} ${p.y.toFixed(1)}`).join(" L")} Z`;
 
 const KIND_LABEL: Record<string, string> = {
@@ -25,8 +28,10 @@ export function PiecePreview({
   contourMm,
   bgColor,
   height = 260,
+  fontInfo = {},
 }: {
   print: PrintPiece;
+  fontInfo?: FontInfo;
   safeMarginMm: number;
   contourMm: number;
   bgColor?: string | null;
@@ -98,9 +103,9 @@ export function PiecePreview({
             x={t.center.x}
             y={t.center.y + t.heightMm / 2}
             textAnchor="middle"
-            fontSize={t.heightMm / 0.72}
-            fontFamily="Helvetica, Arial, sans-serif"
-            fontWeight={700}
+            fontSize={t.heightMm / (fontInfo[t.style.font]?.capRatio ?? 0.72)}
+            fontFamily={fontInfo[t.style.font] ? `"${fontInfo[t.style.font].family}"` : "Helvetica, Arial, sans-serif"}
+            fontWeight={fontInfo[t.style.font] ? undefined : 700}
             fill={t.style.fill || "#111"}
           >
             {t.text}

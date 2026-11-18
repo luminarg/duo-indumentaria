@@ -4,6 +4,7 @@ import { revalidatePath } from "next/cache";
 import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import type { DesignConfig, PieceKind } from "@/lib/produccion/types";
+import { FONT_FOLDER, fontNameFromPath, fontSlug, type FontEntry } from "@/lib/produccion/fonts";
 
 // Archivos del módulo (moldes, fondos, escudos, PDFs de rollo) en el bucket
 // privado "production-files": se suben con el cliente admin y se leen con
@@ -33,6 +34,40 @@ export async function createProductionUpload(folder: string, ext: string): Promi
   const { data, error } = await admin.storage.from(BUCKET).createSignedUploadUrl(path);
   if (error || !data) throw new Error("No se pudo preparar la subida: " + (error?.message ?? ""));
   return { path, token: data.token };
+}
+
+/** Igual que createProductionUpload, pero para una fuente: el nombre queda en la ruta. */
+export async function createFontUpload(fileName: string): Promise<{ path: string; token: string }> {
+  await requireTeamMember();
+  const ext = (fileName.match(/\.(ttf|otf)$/i)?.[1] ?? "").toLowerCase();
+  if (!ext) throw new Error("La fuente tiene que ser .ttf u .otf");
+  const path = `${FONT_FOLDER}/${fontSlug(fileName)}--${crypto.randomUUID().slice(0, 8)}.${ext}`;
+  const admin = createAdminClient();
+  const { data, error } = await admin.storage.from(BUCKET).createSignedUploadUrl(path);
+  if (error || !data) throw new Error("No se pudo preparar la subida: " + (error?.message ?? ""));
+  return { path, token: data.token };
+}
+
+/** Fuentes subidas (biblioteca común a todos los pedidos). */
+export async function listProductionFonts(): Promise<FontEntry[]> {
+  await requireTeamMember();
+  const admin = createAdminClient();
+  const { data, error } = await admin.storage.from(BUCKET).list(FONT_FOLDER, { limit: 500, sortBy: { column: "name", order: "asc" } });
+  if (error) throw new Error("No se pudieron leer las fuentes: " + error.message);
+  return (data ?? [])
+    .filter((f) => /\.(ttf|otf)$/i.test(f.name))
+    .map((f) => {
+      const path = `${FONT_FOLDER}/${f.name}`;
+      return { path, name: fontNameFromPath(path) };
+    });
+}
+
+export async function deleteProductionFont(path: string) {
+  await requireTeamMember();
+  if (!path.startsWith(`${FONT_FOLDER}/`) || path.includes("..")) throw new Error("Ruta inválida");
+  const admin = createAdminClient();
+  const { error } = await admin.storage.from(BUCKET).remove([path]);
+  if (error) throw new Error("No se pudo borrar la fuente: " + error.message);
 }
 
 export async function signedProductionUrls(paths: string[]): Promise<Record<string, string>> {

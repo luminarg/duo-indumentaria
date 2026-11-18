@@ -69,7 +69,7 @@ export type AnchoredElement = {
 };
 
 export type TextStyle = {
-  /** Familia registrada en el módulo; por ahora "Helvetica-Bold" o una fuente subida. */
+  /** "Helvetica-Bold" o la ruta en Storage de una fuente subida (fuentes/…ttf|otf). */
   font: string;
   fill: string; // hex
   stroke?: string | null; // borde, hex
@@ -118,6 +118,8 @@ export type SizeTagRule = {
   heightMm: number;
   /** "auto" = blanco sobre fondos oscuros, negro sobre claros. */
   color?: string;
+  /** Fuente (ruta de una fuente subida); vacío = Helvetica Bold. */
+  font?: string;
 };
 
 /**
@@ -144,6 +146,8 @@ export type SizeIndicatorRule = {
   textY: number;
   textHeightMm: number;
   textColor: string;
+  /** Fuente de la letra del talle (ruta de una fuente subida); vacío = Helvetica Bold. */
+  font?: string;
 };
 
 /** Dónde está una pieza dentro del PDF de diseño (ver designDetect.ts). */
