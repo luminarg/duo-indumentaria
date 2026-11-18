@@ -49,11 +49,24 @@ export function defaultDesignConfig(): DesignConfig {
     sizeTag: {
       enabled: true,
       pieceKinds: ["frente", "espalda", "manga_izq", "manga_der"],
-      fromRightMm: 30, // relevamiento: 3 cm del costado
-      fromBaseMm: 70, // relevamiento: 7 cm de la base
-      heightMm: 8, // como en la moldería: talle de ~8 mm adentro de un cuadrado de 18 mm
-      box: { sizeMm: 18, strokeMm: 0.6 }, // el "cubito"
+      corner: "derecha", // esquina de la base, contra el borde, dentro del ruedo
+      marginMm: 1, // adentro de la línea: no pisa el contorno negro
+      heightMm: 5, // como en el diseño de Talleres
       color: "auto",
+    },
+    sizeIndicator: {
+      enabled: false, // opcional: en algunas prendas va y en otras no
+      pieceKind: "frente", // solo en el frente
+      side: "izquierda",
+      fromSideUnits: 0.8, // tomado del diseño de Talleres (talle M)
+      fromBaseUnits: 2.4,
+      widthMm: 20,
+      artPath: null, // el arte se sube como el escudo, sin la letra
+      artAspect: 3.7,
+      textX: 0.5,
+      textY: 0.15,
+      textHeightMm: 6,
+      textColor: "#FFFFFF",
     },
     safeMarginMm: 10, // relevamiento
   };

@@ -203,6 +203,15 @@ export function ProductionWorkbench(props: {
       });
     });
 
+  const onIndicatorFile = (file: File) =>
+    run("Subiendo indicador…", async () => {
+      const pdf = await readPdf(file);
+      const path = await uploadToProduction(`disenos/${orderId}`, file, "pdf");
+      setAssets((a) => ({ ...a, [path]: pdf.bytes }));
+      update((c) => ({ ...c, sizeIndicator: { ...c.sizeIndicator, artPath: path, artAspect: pdf.heightMm / pdf.widthMm, widthMm: Math.round(pdf.widthMm) } }));
+      setMessage(`Indicador cargado: ${pdf.widthMm.toFixed(0)} × ${pdf.heightMm.toFixed(0)} mm. La letra del talle se agrega sola.`);
+    });
+
   const onSaveDesign = () =>
     startTransition(async () => {
       setError(null);
@@ -227,13 +236,15 @@ export function ProductionWorkbench(props: {
     });
 
   async function makePdf(l: RollLayout) {
-    const paths = [config.background.filePath, ...config.elements.map((e) => e.filePath)].filter(Boolean) as string[];
+    const paths = [config.background.filePath, config.sizeIndicator.artPath, ...config.elements.map((e) => e.filePath)].filter(Boolean) as string[];
     const missing = paths.filter((p) => !assets[p]);
     const downloaded = missing.length ? await downloadProductionFiles(missing) : {};
     const all = { ...assets, ...downloaded };
     if (missing.length) setAssets(all);
     const elements: Record<string, Uint8Array> = {};
     for (const e of config.elements) if (e.filePath && all[e.filePath]) elements[e.filePath] = all[e.filePath];
+    const ia = config.sizeIndicator.artPath;
+    if (ia && all[ia]) elements[ia] = all[ia];
     const bg = config.background.filePath ? all[config.background.filePath] : null;
     const { bytes } = await exportRollPdf(l, config.background, { background: bg, elements });
     return new Blob([bytes as BlobPart], { type: "application/pdf" });
@@ -318,7 +329,7 @@ export function ProductionWorkbench(props: {
       )}
 
       <div className="grid gap-6 lg:grid-cols-[380px_1fr]">
-        <DesignForm config={config} update={update} onBackground={onBackground} onElementFile={onElementFile} />
+        <DesignForm config={config} update={update} onBackground={onBackground} onElementFile={onElementFile} onIndicatorFile={onIndicatorFile} />
 
         <div className="flex flex-col gap-4">
           <Card>
@@ -424,11 +435,13 @@ function DesignForm({
   update,
   onBackground,
   onElementFile,
+  onIndicatorFile,
 }: {
   config: DesignConfig;
   update: (fn: (c: DesignConfig) => DesignConfig) => void;
   onBackground: (f: File) => void;
   onElementFile: (idx: number, f: File) => void;
+  onIndicatorFile: (f: File) => void;
 }) {
   const setEl = (i: number, patch: Partial<AnchoredElement>) =>
     update((c) => {
@@ -572,17 +585,50 @@ function DesignForm({
         )}
         <label className="flex items-center gap-2 text-sm font-medium text-zinc-900">
           <input type="checkbox" checked={config.sizeTag.enabled} onChange={(e) => update((c) => ({ ...c, sizeTag: { ...c.sizeTag, enabled: e.target.checked } }))} />
-          Etiqueta de talle ({config.sizeTag.fromRightMm / 10} cm del costado, {config.sizeTag.fromBaseMm / 10} cm de la base)
+          Talle en la esquina de cada pieza
         </label>
         {config.sizeTag.enabled && (
-          <label className="flex items-center gap-2 pl-6 text-xs text-zinc-600">
-            <input
-              type="checkbox"
-              checked={!!config.sizeTag.box}
-              onChange={(e) => update((c) => ({ ...c, sizeTag: { ...c.sizeTag, box: e.target.checked ? { sizeMm: 18, strokeMm: 0.6 } : null } }))}
-            />
-            Dentro de un cuadrado de 18 mm (color automático según el fondo)
-          </label>
+          <div className="grid grid-cols-2 gap-2 pl-6">
+            <Select label="Esquina de la base" value={config.sizeTag.corner} onChange={(e) => update((c) => ({ ...c, sizeTag: { ...c.sizeTag, corner: e.target.value as "derecha" | "izquierda" } }))}>
+              <option value="derecha">Derecha</option>
+              <option value="izquierda">Izquierda</option>
+            </Select>
+            <Num label="Alto (mm)" value={config.sizeTag.heightMm} onChange={(n) => update((c) => ({ ...c, sizeTag: { ...c.sizeTag, heightMm: n } }))} hint="Contra el borde, dentro del ruedo" />
+          </div>
+        )}
+      </Card>
+
+      <Card className="flex flex-col gap-3">
+        <label className="flex items-center gap-2 text-sm font-medium text-zinc-900">
+          <input type="checkbox" checked={config.sizeIndicator.enabled} onChange={(e) => update((c) => ({ ...c, sizeIndicator: { ...c.sizeIndicator, enabled: e.target.checked } }))} />
+          Indicador de talle en el frente (opcional)
+        </label>
+        {config.sizeIndicator.enabled && (
+          <div className="flex flex-col gap-2">
+            <label className="text-xs font-medium text-zinc-500">
+              PDF del indicador, sin la letra del talle {config.sizeIndicator.artPath ? "(cargado)" : ""}
+              <input type="file" accept="application/pdf" className="mt-1 block w-full text-sm" onChange={(e) => e.target.files?.[0] && onIndicatorFile(e.target.files[0])} />
+            </label>
+            <Select label="Lado" value={config.sizeIndicator.side} onChange={(e) => update((c) => ({ ...c, sizeIndicator: { ...c.sizeIndicator, side: e.target.value as WearerSide } }))}>
+              {SIDE_OPTIONS.map((o) => (
+                <option key={o.value} value={o.value}>{o.label}</option>
+              ))}
+            </Select>
+            <div className="grid grid-cols-2 gap-2">
+              <Num label="Unidades desde el costado" step={0.1} value={config.sizeIndicator.fromSideUnits} onChange={(n) => update((c) => ({ ...c, sizeIndicator: { ...c.sizeIndicator, fromSideUnits: n } }))} />
+              <Num label="Unidades desde la base" step={0.1} value={config.sizeIndicator.fromBaseUnits} onChange={(n) => update((c) => ({ ...c, sizeIndicator: { ...c.sizeIndicator, fromBaseUnits: n } }))} />
+              <Num label="Ancho (mm)" value={config.sizeIndicator.widthMm} onChange={(n) => update((c) => ({ ...c, sizeIndicator: { ...c.sizeIndicator, widthMm: n } }))} />
+              <Select
+                label="Letra del talle"
+                value={String(config.sizeIndicator.textY)}
+                onChange={(e) => update((c) => ({ ...c, sizeIndicator: { ...c.sizeIndicator, textY: Number(e.target.value) } }))}
+              >
+                <option value="0.15">Arriba</option>
+                <option value="0.5">Al centro</option>
+                <option value="0.85">Abajo</option>
+              </Select>
+            </div>
+          </div>
         )}
       </Card>
     </div>

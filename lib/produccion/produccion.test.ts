@@ -4,7 +4,7 @@ import { assemblyTransforms, DEFAULT_ASSEMBLY, shoulderTip, sizeScale } from "./
 import { approxMeasurer, buildPrintPieces, contrastOn } from "./build";
 import { defaultDesignConfig } from "./defaults";
 import { exportRollPdf, splitSegments } from "./exportPdf";
-import { apply, area, bbox, compose, minDistance, offset } from "./geometry";
+import { apply, area, areaOutside, bbox, compose, minDistance, offset, rectPoly, spanAtY } from "./geometry";
 import { DEFAULT_SETTINGS, nest } from "./nesting";
 import { gridUnit, placeElement, sizeGroupOf } from "./rules";
 import { sampleMolds } from "./sampleMolds";
@@ -135,15 +135,34 @@ describe("nombre, número y etiqueta", () => {
     expect(short.text).toBe("PÉREZ");
   });
 
-  it("etiqueta de talle en un cuadrado, a 3 cm del costado derecho y 7 cm de la base, medida al borde", () => {
-    const front = prints.find((p) => p.garment.orderItemId === "a" && p.piece.kind === "frente")!;
-    const box = front.boxes[0];
-    const tag = front.texts.find((t) => t.kind === "talle")!;
+  it("talle en la esquina de la base, contra el borde y adentro de la línea, en todas las piezas", () => {
+    for (const kind of ["frente", "espalda", "manga_izq"] as const) {
+      const pc = prints.find((p) => p.garment.orderItemId === "a" && p.piece.kind === kind)!;
+      const tag = pc.texts.find((t) => t.kind === "talle")!;
+      const b = bbox(pc.piece.outline);
+      // Pegado a la base y al costado derecho (a pocos mm), sin salirse de la pieza.
+      expect(b.maxY - (tag.center.y + tag.heightMm / 2)).toBeLessThan(3);
+      // Contra el costado a la altura del talle (en las mangas el costado es inclinado).
+      const span = spanAtY(pc.piece.outline, tag.center.y + tag.heightMm / 2)!;
+      expect(span[1] - (tag.center.x + tag.widthMm / 2)).toBeLessThan(4);
+      expect(areaOutside(rectPoly(tag.center.x, tag.center.y, tag.widthMm, tag.heightMm), pc.piece.outline)).toBeLessThan(0.5);
+      expect(tag.text).toBe("L");
+    }
+  });
+
+  it("el indicador de talle tipo escudo va solo en el frente, con la letra encima", () => {
+    const d2 = { ...design, sizeIndicator: { ...design.sizeIndicator, enabled: true, artPath: "ind.pdf", artAspect: 3.7 } };
+    const r = buildPrintPieces({ pieces: molds, assembly: DEFAULT_ASSEMBLY, design: d2, garments: [garments[0]], measure: approxMeasurer });
+    const front = r.prints.find((p) => p.piece.kind === "frente")!;
+    const back = r.prints.find((p) => p.piece.kind === "espalda")!;
+    expect(front.elements.some((e) => e.elementId === "indicador-talle")).toBe(true);
+    expect(back.elements.some((e) => e.elementId === "indicador-talle")).toBe(false);
+    const el = front.elements.find((e) => e.elementId === "indicador-talle")!;
     const b = bbox(front.piece.outline);
-    expect(box.center.x + box.sizeMm / 2).toBeCloseTo(b.maxX - 30, 6);
-    expect(box.center.y + box.sizeMm / 2).toBeCloseTo(b.maxY - 70, 6);
-    expect(tag.center).toEqual(box.center);
-    expect(tag.text).toBe("L");
+    const u = gridUnit(front.piece);
+    expect((b.maxX - el.center.x) / u).toBeCloseTo(0.8, 6); // izquierda de quien usa = derecha del dibujo
+    expect((b.maxY - el.center.y) / u).toBeCloseTo(2.4, 6);
+    expect(front.texts.filter((t) => t.kind === "talle").length).toBe(2); // esquina + indicador
   });
 
   it("el color de la etiqueta contrasta con el fondo", () => {

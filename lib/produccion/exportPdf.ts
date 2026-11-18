@@ -163,18 +163,24 @@ export async function exportRollPdf(layout: RollLayout, background: BackgroundRu
       }
       page.pushOperators(popGraphicsState());
 
-      // 3. Recuadros (etiqueta de talle).
+      // 3. Indicador de talle: arte subido, o cuadrado con borde.
       for (const bx of print.boxes ?? []) {
+        const art = bx.artPath ? elementPages[bx.artPath] : undefined;
+        if (art) {
+          const s = bx.widthMm / (art.width / MM);
+          const m = compose(
+            compose(embeddedToCanvas(art), { a: s, b: 0, c: 0, d: s, e: 0, f: 0 }),
+            translate(bx.center.x - bx.widthMm / 2, bx.center.y - bx.heightMm / 2)
+          );
+          page.pushOperators(pushGraphicsState(), cm(pieceToPage), cm(m), drawObject(xobj(art)), popGraphicsState());
+          continue;
+        }
+        if (!bx.strokeMm) continue;
         const c = hexToRgb(bx.color);
-        const h = bx.sizeMm / 2, t = bx.strokeMm;
-        const outerSq = [
-          { x: bx.center.x - h, y: bx.center.y - h }, { x: bx.center.x + h, y: bx.center.y - h },
-          { x: bx.center.x + h, y: bx.center.y + h }, { x: bx.center.x - h, y: bx.center.y + h },
-        ];
-        const innerSq = [
-          { x: bx.center.x - h + t, y: bx.center.y - h + t }, { x: bx.center.x - h + t, y: bx.center.y + h - t },
-          { x: bx.center.x + h - t, y: bx.center.y + h - t }, { x: bx.center.x + h - t, y: bx.center.y - h + t },
-        ];
+        const hw = bx.widthMm / 2, hh = bx.heightMm / 2, t = bx.strokeMm;
+        const { x, y } = bx.center;
+        const outerSq = [{ x: x - hw, y: y - hh }, { x: x + hw, y: y - hh }, { x: x + hw, y: y + hh }, { x: x - hw, y: y + hh }];
+        const innerSq = [{ x: x - hw + t, y: y - hh + t }, { x: x - hw + t, y: y + hh - t }, { x: x + hw - t, y: y + hh - t }, { x: x + hw - t, y: y - hh + t }];
         page.pushOperators(pushGraphicsState(), cm(pieceToPage), setFillingRgbColor(c.red, c.green, c.blue), ...pathOps(outerSq), ...pathOps(innerSq), fillEvenOdd(), popGraphicsState());
       }
 

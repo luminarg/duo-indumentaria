@@ -82,11 +82,12 @@ export function PiecePreview({
         {(print.boxes ?? []).map((bx, i) => (
           <rect
             key={`b${i}`}
-            x={bx.center.x - bx.sizeMm / 2}
-            y={bx.center.y - bx.sizeMm / 2}
-            width={bx.sizeMm}
-            height={bx.sizeMm}
-            fill="none"
+            x={bx.center.x - bx.widthMm / 2}
+            y={bx.center.y - bx.heightMm / 2}
+            width={bx.widthMm}
+            height={bx.heightMm}
+            fill={bx.artPath ? "#f97316" : "none"}
+            fillOpacity={bx.artPath ? 0.6 : 0}
             stroke={bx.color}
             strokeWidth={Math.max(bx.strokeMm, 1.5)}
           />

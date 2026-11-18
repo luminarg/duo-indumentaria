@@ -1,6 +1,6 @@
 import { assemblyTransforms, backgroundTransform, sizeScale } from "./assembly";
-import { bbox, compose, offset, spanAtY, translate } from "./geometry";
-import { baselineY, normalizeSize, placeElement, safeZoneOverflow, shoulderTop, sizeGroupOf, xFromWearerSide, yFromShoulderTop } from "./rules";
+import { areaOutside, bbox, compose, offset, rectPoly, spanAtY, translate } from "./geometry";
+import { baselineY, gridUnit, normalizeSize, placeElement, safeZoneOverflow, shoulderTop, sizeGroupOf, xFromWearerSide, yFromShoulderTop } from "./rules";
 import type {
   Affine,
   AssemblyRule,
@@ -44,6 +44,34 @@ function fitText(
 }
 
 export const DESIGN_CLIP_INSET_MM = 1.5;
+
+/**
+ * Centro de un rectángulo w × h apoyado en una esquina de la base de la
+ * pieza, lo más abajo y hacia el costado posible, a `margin` mm adentro de la
+ * línea. Devuelve null si no entra.
+ */
+export function cornerPlacement(outline: PatternPiece["outline"], w: number, h: number, margin: number, corner: "derecha" | "izquierda") {
+  const inner = offset(outline, -margin);
+  if (!inner) return null;
+  const ib = bbox(inner);
+  for (let k = 0; k < 120; k++) {
+    const yb = ib.maxY - 0.05 - k * 0.5;
+    const yt = yb - h;
+    if (yt < ib.minY) break;
+    let left = -Infinity, right = Infinity, ok = true;
+    for (const y of [yb, (yb + yt) / 2, yt]) {
+      const sp = spanAtY(inner, y);
+      if (!sp) { ok = false; break; }
+      left = Math.max(left, sp[0]);
+      right = Math.min(right, sp[1]);
+    }
+    if (!ok || right - left < w) continue;
+    const cx = corner === "derecha" ? right - w / 2 - 0.05 : left + w / 2 + 0.05;
+    const center = { x: cx, y: (yb + yt) / 2 };
+    if (areaOutside(rectPoly(center.x, center.y, w, h), inner) < 0.5) return center;
+  }
+  return null;
+}
 
 /** Blanco sobre fondos oscuros, casi negro sobre claros. */
 export function contrastOn(bg?: string | null): string {
@@ -160,20 +188,34 @@ export function buildPrintPieces({ pieces, assembly, design, garments, measure }
         texts.push({ kind: "nombre", text, center: { x: centerX, y }, heightMm: fit.heightMm, widthMm: fit.widthMm, style: nm.style });
       }
 
-      // Etiqueta de talle: abajo a la derecha del dibujo, medida a su borde.
-      // Con recuadro (el "cubito"), la medida es al borde del cuadrado.
+      // Talle en la esquina: contra el borde de la base, adentro de la línea
+      // (queda dentro del ruedo y no pisa el contorno).
       const tag = design.sizeTag;
       const boxes: PrintPiece["boxes"] = [];
       if (tag.enabled && tag.pieceKinds.includes(piece.kind)) {
         const color = !tag.color || tag.color === "auto" ? contrastOn(design.background.color) : tag.color;
         const style: TextStyle = { font: "Helvetica-Bold", fill: color };
         const w = measure(piece.sizeLabel, style.font, tag.heightMm);
-        const side = tag.box ? Math.max(tag.box.sizeMm, w + 4) : w;
-        const boxH = tag.box ? tag.box.sizeMm : tag.heightMm;
-        const cx = b.maxX - tag.fromRightMm - side / 2;
-        const cy = baselineY(piece) - tag.fromBaseMm - boxH / 2;
-        if (tag.box) boxes.push({ center: { x: cx, y: cy }, sizeMm: side, strokeMm: tag.box.strokeMm, color });
-        texts.push({ kind: "talle", text: piece.sizeLabel, center: { x: cx, y: cy }, heightMm: tag.heightMm, widthMm: w, style });
+        const center = cornerPlacement(piece.outline, w, tag.heightMm, tag.marginMm, tag.corner);
+        if (center) texts.push({ kind: "talle", text: piece.sizeLabel, center, heightMm: tag.heightMm, widthMm: w, style });
+        else pieceWarnings.push({ pieceId: piece.id, message: `No entra el talle en la esquina de ${piece.kind} talle ${piece.sizeLabel}` });
+      }
+
+      // Indicador de talle tipo escudo (opcional): arte + letra del talle.
+      const ind = design.sizeIndicator;
+      if (ind?.enabled && ind.pieceKind === piece.kind) {
+        const u = gridUnit(piece);
+        const w = ind.widthMm;
+        const h = w * (ind.artAspect || 1);
+        const center = { x: xFromWearerSide(piece, ind.side, ind.fromSideUnits), y: baselineY(piece) - ind.fromBaseUnits * u };
+        if (ind.artPath) elements.push({ elementId: "indicador-talle", label: "Indicador de talle", center, widthMm: w, heightMm: h, filePath: ind.artPath });
+        else boxes.push({ center, widthMm: w, heightMm: h, strokeMm: 0.6, color: contrastOn(design.background.color) });
+        const textCenter = { x: center.x - w / 2 + ind.textX * w, y: center.y - h / 2 + ind.textY * h };
+        const style: TextStyle = { font: "Helvetica-Bold", fill: ind.textColor || "#FFFFFF" };
+        texts.push({ kind: "talle", text: piece.sizeLabel, center: textCenter, heightMm: ind.textHeightMm, widthMm: measure(piece.sizeLabel, style.font, ind.textHeightMm), style });
+        if (safeZoneOverflow(piece, center, w, h, design.safeMarginMm) > 1) {
+          pieceWarnings.push({ pieceId: piece.id, message: `El indicador de talle queda a menos de ${design.safeMarginMm} mm del borde en talle ${piece.sizeLabel}` });
+        }
       }
 
       const t = c.t.get(piece.id);

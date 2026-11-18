@@ -52,8 +52,13 @@ export function normalizeConfig(raw: unknown, baseSizeLabel?: string): DesignCon
     background: { ...d.background, ...(c.background ?? {}) },
     number: { ...d.number, ...(c.number ?? {}) },
     name: { ...d.name, ...(c.name ?? {}) },
-    sizeTag: { ...d.sizeTag, ...(c.sizeTag ?? {}) },
-    // (box y color tienen default en d.sizeTag: los diseños viejos los heredan)
+    sizeTag: {
+      ...d.sizeTag,
+      ...(c.sizeTag ?? {}),
+      // Diseños guardados con la versión vieja (3 × 7 cm) pasan a la regla nueva.
+      ...(c.sizeTag && !("corner" in c.sizeTag) ? { corner: d.sizeTag.corner, marginMm: d.sizeTag.marginMm, heightMm: d.sizeTag.heightMm } : {}),
+    },
+    sizeIndicator: { ...d.sizeIndicator, ...(c.sizeIndicator ?? {}) },
     elements: c.elements ?? d.elements,
   };
 }

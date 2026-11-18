@@ -37,7 +37,8 @@ cortar con láser. Está en el panel en **Producción**, en `/panel/produccion`.
 | Zona segura | Nada importante a menos de 10 mm del contorno (avisa) |
 | Número | 200 mm adulto, 170 mm niño (se achica si no entra, y avisa) |
 | Nombre | 40 mm; si no entra a lo ancho, se achica en proporción |
-| Etiqueta de talle | Abajo a la derecha del dibujo: 3 cm del costado y 7 cm de la base, medido al borde de la etiqueta |
+| Talle en la esquina | En todas las piezas: la letra del talle (5 mm) en una esquina de la base, contra el borde y 1 mm adentro de la línea (queda dentro del ruedo, no pisa el contorno) |
+| Indicador de talle | Opcional, solo en el frente: arte subido como el escudo (sin la letra), ubicado con la grilla (0,8 u del costado izquierdo de quien usa, 2,4 u desde la base); la letra del talle se agrega encima |
 | Contorno láser | Negro RGB 0,0,0, 3 mm por fuera de la línea |
 | Separación | 6 mm entre contornos, o sea 12 mm entre líneas de vector |
 | Rotación | Solo 0° o 180° (hilo de la tela) |
@@ -46,7 +47,7 @@ cortar con láser. Está en el panel en **Producción**, en `/panel/produccion`.
 
 Los valores marcados como `SUPUESTO` en `lib/produccion/defaults.ts` no
 salieron del cuestionario y hay que confirmarlos. Son los tamaños del escudo,
-la posición del número y el nombre y el alto de la etiqueta. Se pueden
+la posición del número y el nombre. Se pueden
 cambiar por diseño desde el panel.
 
 ## Diseño sobre las piezas de un talle (modo por defecto)
@@ -65,6 +66,11 @@ misma regla que se aplica a mano.
   arte queda con el color de fondo.
 - Las piezas del diseño que no están en la moldería (por ejemplo, el cuello)
   no se usan.
+
+Importante: el PDF de diseño va **sin** el talle de las esquinas y **sin** el
+indicador de talle, porque esos los agrega el sistema con la letra de cada
+talle. Si quedan dibujados en el diseño, en los otros talles aparecería la
+letra del talle base.
 
 ## Fondo continuo (modo "lienzo"): rayas que coinciden
 

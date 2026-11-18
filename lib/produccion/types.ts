@@ -102,19 +102,48 @@ export type NameRule = {
   style: TextStyle;
 };
 
+/**
+ * Talle en la esquina: la letra chiquita del talle en una esquina de la base
+ * de cada pieza, contra el borde pero adentro de la línea (queda dentro del
+ * ruedo y no pisa el contorno). Sirve para identificar las piezas al coser.
+ */
 export type SizeTagRule = {
   enabled: boolean;
   pieceKinds: PieceKind[];
-  /** Distancia del borde de la etiqueta al costado DERECHO del dibujo. */
-  fromRightMm: number;
-  /** Distancia del borde inferior de la etiqueta a la línea de base. */
-  fromBaseMm: number;
+  /** Esquina de la base (lado del dibujo, visto desde afuera). */
+  corner: "derecha" | "izquierda";
+  /** Separación entre el texto y la línea de la pieza. */
+  marginMm: number;
   /** Alto del texto del talle. */
   heightMm: number;
-  /** Recuadro (el "cubito"): cuadrado con el talle adentro. null = solo el texto. */
-  box?: { sizeMm: number; strokeMm: number } | null;
-  /** Color de texto y recuadro: "auto" = blanco sobre fondos oscuros, negro sobre claros. */
+  /** "auto" = blanco sobre fondos oscuros, negro sobre claros. */
   color?: string;
+};
+
+/**
+ * Indicador de talle "tipo escudo": un arte que se sube (como el escudo),
+ * ubicado con la grilla de 10 unidades, con la letra del talle encima.
+ * Opcional: en algunas prendas va y en otras no.
+ */
+export type SizeIndicatorRule = {
+  enabled: boolean;
+  pieceKind: PieceKind;
+  /** Lado de quien usa la prenda. */
+  side: WearerSide;
+  /** Centro del indicador, en unidades desde el costado. */
+  fromSideUnits: number;
+  /** Centro del indicador, en unidades desde la base (ruedo). */
+  fromBaseUnits: number;
+  /** Ancho del arte (el alto sale de su proporción). */
+  widthMm: number;
+  /** PDF del arte, SIN la letra del talle. */
+  artPath?: string | null;
+  artAspect: number;
+  /** Dónde va la letra dentro del arte (0–1 de izquierda a derecha y de arriba abajo). */
+  textX: number;
+  textY: number;
+  textHeightMm: number;
+  textColor: string;
 };
 
 /** Dónde está una pieza dentro del PDF de diseño (ver designDetect.ts). */
@@ -157,6 +186,7 @@ export type DesignConfig = {
   number: NumberRule;
   name: NameRule;
   sizeTag: SizeTagRule;
+  sizeIndicator: SizeIndicatorRule;
   /** Ningún elemento importante a menos de esto del contorno. */
   safeMarginMm: number;
 };
@@ -221,8 +251,8 @@ export type PrintPiece = {
   backgroundClip?: Poly | null;
   elements: PlacedElement[];
   texts: PlacedText[];
-  /** Recuadros (etiqueta de talle). */
-  boxes: { center: Pt; sizeMm: number; strokeMm: number; color: string }[];
+  /** Indicador de talle: arte subido o cuadrado con borde. */
+  boxes: { center: Pt; widthMm: number; heightMm: number; strokeMm: number; color: string; artPath?: string | null }[];
   warnings: Warning[];
 };
 
