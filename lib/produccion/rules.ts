@@ -2,6 +2,19 @@ import { areaOutside, bbox, highestPoint, offset, rectPoly } from "./geometry";
 import type { AnchoredElement, PatternPiece, PieceKind, Pt, SizeGroup, WearerSide } from "./types";
 
 /**
+ * Forma canónica de un talle para comparar: "2xl" = "XXL", "3XL" = "XXXL",
+ * "10 años" = "10". La moldería y los pedidos pueden escribirlo distinto.
+ */
+export function normalizeSize(label: string): string {
+  let s = label.trim().toUpperCase().replace(/\s*(AÑOS|ANOS|AÑO)\s*$/, "").replace(/\s+/g, "");
+  const m = s.match(/^(\d)XL$/);
+  if (m) s = "X".repeat(Number(m[1])) + "L";
+  const n = s.match(/^(\d)XS$/);
+  if (n) s = "X".repeat(Number(n[1])) + "S";
+  return s;
+}
+
+/**
  * Talle de niño: números solos hasta 16 ("2", "10", "16"), o textos con
  * "niño"/"años". Todo lo demás (XS…4XL, dama, etc.) es adulto.
  */

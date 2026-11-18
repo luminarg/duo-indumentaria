@@ -216,3 +216,88 @@ describe("contorno láser y tizada", () => {
     expect((width / 72) * 25.4).toBeCloseTo(1550, 3);
   });
 });
+
+// ---------------------------------------------------------------- importación y diseño
+
+import { importSvg } from "./vectorImport";
+import { importPdf } from "./pdfImport";
+import { designToPiece } from "./build";
+import { rgb } from "pdf-lib";
+
+function pathOf(poly: { x: number; y: number }[], dx: number, dy: number) {
+  return "M" + poly.map((p) => `${(p.x + dx).toFixed(2)},${(p.y + dy).toFixed(2)}`).join(" L") + " Z";
+}
+
+describe("importación de moldería", () => {
+  it("lee un SVG con varios talles y asigna el talle por el texto de abajo", () => {
+    // Dos talles uno al lado del otro: mangas, espalda, frente; rótulo debajo.
+    let x = 0;
+    const parts: string[] = [];
+    for (const size of ["10", "L"]) {
+      const ps = molds.filter((p) => p.sizeLabel === size);
+      const f = ps.find((p) => p.kind === "frente")!, b = ps.find((p) => p.kind === "espalda")!, s = ps.find((p) => p.kind === "manga_izq")!;
+      const sb = bbox(s.outline), bb = bbox(b.outline);
+      parts.push(`<path d="${pathOf(s.outline, x, 0)}"/>`, `<path d="${pathOf(s.outline, x, sb.maxY + 20)}"/>`);
+      x += sb.maxX + 20;
+      parts.push(`<path d="${pathOf(b.outline, x, 0)}"/>`);
+      x += bb.maxX;
+      parts.push(`<path d="${pathOf(f.outline, x, 0)}"/>`);
+      parts.push(`<text x="${x - 60}" y="${bb.maxY + 250}" font-size="150">${size}</text>`);
+      x += bbox(f.outline).maxX + 300;
+    }
+    const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="${x}mm" height="1200mm" viewBox="0 0 ${x} 1200">${parts.join("")}</svg>`;
+    const r = importSvg(svg);
+    expect(r.sizes).toEqual(["10", "L"]);
+    const L = r.pieces.filter((p) => p.sizeLabel === "L");
+    expect(L.map((p) => p.kind).sort()).toEqual(["espalda", "frente", "manga_der", "manga_izq"]);
+    const front = L.find((p) => p.kind === "frente")!;
+    expect(front.widthMm).toBeCloseTo(560, 1);
+  });
+
+  it("en un PDF de Corel toma el borde interior de la línea de 3 mm", async () => {
+    const doc = await PDFDocument.create();
+    const page = doc.addPage([800 * MMPT, 900 * MMPT]);
+    const p = piece("L", "frente");
+    const outer = offset(p.outline, 3)!;
+    // Anillo: exterior + interior en un mismo relleno (así exporta Corel).
+    const d = (poly: { x: number; y: number }[]) => "M" + poly.map((q) => `${((q.x + 50) * MMPT).toFixed(2)},${((q.y + 50) * MMPT).toFixed(2)}`).join(" L") + " Z";
+    page.drawSvgPath(d(outer) + " " + d([...p.outline].reverse()), { x: 0, y: page.getHeight(), color: rgb(0, 0, 0) });
+    const r = await importPdf(new Uint8Array(await doc.save()));
+    expect(r.pieces).toHaveLength(1);
+    expect(r.pieces[0].widthMm).toBeCloseTo(560, 0);
+    expect(r.notes.join(" ")).toMatch(/3\.0 mm/);
+  });
+});
+
+const MMPT = 72 / 25.4;
+
+describe("diseño hecho sobre un talle", () => {
+  it("lo que está en el arte cae en las mismas unidades de la grilla en otro talle", () => {
+    const base = piece("M", "frente");
+    const target = piece("XL", "frente");
+    const bb = bbox(base.outline);
+    // La pieza M está en el archivo de diseño en (1000, 80), sin girar.
+    const ref = { outline: base.outline.map((q) => ({ x: q.x + 1000, y: q.y + 80 })), box: { minX: bb.minX + 1000, minY: bb.minY + 80, maxX: bb.maxX + 1000, maxY: bb.maxY + 80 }, rotation: 0 as const, match: 1 };
+    const m = designToPiece(ref, base, target);
+    const uB = gridUnit(base), uT = gridUnit(target);
+    // Escudo en el diseño: 2,5 u desde el costado derecho del dibujo y 3,5 u desde el hombro.
+    const crestCanvas = { x: bb.maxX - 2.5 * uB + 1000, y: bb.minY + 3.5 * uB + 80 };
+    const c = apply(m, crestCanvas);
+    const tb = bbox(target.outline);
+    expect((tb.maxX - c.x) / uT).toBeCloseTo(2.5, 6);
+    expect((c.y - tb.minY) / uT).toBeCloseTo(3.5, 6);
+  });
+
+  it("deshace el giro de 180° de una pieza en el archivo", () => {
+    const base = piece("M", "manga_izq");
+    const bb = bbox(base.outline);
+    const W = bb.maxX - bb.minX, H = bb.maxY - bb.minY;
+    const rotated = base.outline.map((q) => ({ x: W - q.x + 10, y: H - q.y + 20 }));
+    const ref = { outline: rotated, box: { minX: 10, minY: 20, maxX: 10 + W, maxY: 20 + H }, rotation: 180 as const, match: 1 };
+    const m = designToPiece(ref, base, base);
+    const p0 = base.outline[3];
+    const back = apply(m, { x: W - p0.x + 10, y: H - p0.y + 20 });
+    expect(back.x).toBeCloseTo(p0.x, 6);
+    expect(back.y).toBeCloseTo(p0.y, 6);
+  });
+});

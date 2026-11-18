@@ -112,8 +112,29 @@ export type SizeTagRule = {
   heightMm: number;
 };
 
+/** Dónde está una pieza dentro del PDF de diseño (ver designDetect.ts). */
+export type DesignPieceRef = {
+  /** Contorno de la pieza en el archivo de diseño (mm, Y abajo). */
+  outline: Poly;
+  box: BBox;
+  rotation: 0 | 180;
+  /** Coincidencia con la moldería (0–1). */
+  match: number;
+};
+
 export type BackgroundRule = {
-  /** PDF del fondo/patrón (trama, rayas) en Storage, dibujado en el lienzo del talle base. */
+  /**
+   * piezas: el PDF es el diseño hecho en Corel sobre las piezas de un talle
+   *   (cada pieza ya pintada). Cada pieza de otro talle toma el arte de su
+   *   pieza equivalente, escalado en proporción desde el centro y el punto más
+   *   alto del hombro (así se respeta la grilla de 10 unidades).
+   * lienzo: el PDF es un fondo continuo (rayas, trama) del que se recortan
+   *   todas las piezas armadas, como el PowerClip.
+   */
+  mode: "piezas" | "lienzo";
+  /** Piezas detectadas en el PDF de diseño (modo "piezas"). */
+  pieces?: Partial<Record<PieceKind, DesignPieceRef>>;
+  /** PDF del fondo/diseño en Storage. */
   filePath?: string | null;
   /** Tamaño del lienzo del fondo en mm (talle base). */
   widthMm: number;
@@ -191,6 +212,8 @@ export type PrintPiece = {
   sizeGroup: SizeGroup;
   /** Lienzo del fondo → coordenadas de la pieza. */
   backgroundTransform: Affine;
+  /** Recorte extra del arte, en coordenadas del lienzo (modo "piezas": la pieza del diseño). */
+  backgroundClip?: Poly | null;
   elements: PlacedElement[];
   texts: PlacedText[];
   warnings: Warning[];

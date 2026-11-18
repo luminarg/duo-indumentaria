@@ -6,7 +6,8 @@ import { Card } from "../../../components/ui/Card";
 import { Button } from "../../../components/ui/Button";
 import { Input, Select } from "../../../components/ui/Input";
 import { EmptyState } from "../../../components/ui/EmptyState";
-import { parseSvgPieces, type ImportedPiece } from "@/lib/produccion/svgImport";
+import { importSvg, type ImportedPiece } from "@/lib/produccion/vectorImport";
+import { importPdf } from "@/lib/produccion/pdfImport";
 import type { PieceKind, Poly } from "@/lib/produccion/types";
 import { createPatternModel, deletePatternModel, savePatternPieces } from "../actions";
 import { uploadToProduction } from "../upload";
@@ -105,11 +106,13 @@ export function MoldesManager({
   );
 }
 
+type Row = ImportedPiece & { key: number };
+
 function ModelDetail({ model, sizes }: { model: Model; sizes: Record<string, string[]> }) {
   const router = useRouter();
-  const [sizeLabel, setSizeLabel] = useState("");
   const [file, setFile] = useState<File | null>(null);
-  const [pieces, setPieces] = useState<(ImportedPiece & { kind: PieceKind })[]>([]);
+  const [rows, setRows] = useState<Row[]>([]);
+  const [fallbackSize, setFallbackSize] = useState("");
   const [notes, setNotes] = useState<string[]>([]);
   const [status, setStatus] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -120,28 +123,50 @@ function ModelDetail({ model, sizes }: { model: Model; sizes: Record<string, str
     setStatus(null);
     setFile(f);
     try {
-      const { pieces: found, notes } = parseSvgPieces(await f.text());
-      setPieces(found.map((p) => ({ ...p, kind: p.guessedKind })));
-      setNotes(notes);
-      if (!found.length) setError("No se encontraron piezas cerradas en el archivo.");
+      const isPdf = f.name.toLowerCase().endsWith(".pdf") || f.type === "application/pdf";
+      const res = isPdf ? await importPdf(new Uint8Array(await f.arrayBuffer())) : importSvg(await f.text());
+      setRows(res.pieces.map((p, i) => ({ ...p, key: i })));
+      setNotes(res.notes);
+      if (!res.pieces.length) setError("No se encontraron piezas cerradas en el archivo.");
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));
     }
   };
 
+  // Grupos por talle (las piezas sin talle van juntas y usan el talle que se escriba).
+  const groups = (() => {
+    const m = new Map<string, Row[]>();
+    for (const r of rows) {
+      const k = r.sizeLabel ?? "";
+      (m.get(k) ?? m.set(k, []).get(k)!).push(r);
+    }
+    return [...m.entries()];
+  })();
+
+  const setRow = (key: number, patch: Partial<Row>) => setRows((rs) => rs.map((r) => (r.key === key ? { ...r, ...patch } : r)));
+  const renameGroup = (from: string, to: string) =>
+    setRows((rs) => rs.map((r) => ((r.sizeLabel ?? "") === from ? { ...r, sizeLabel: to.trim().toUpperCase() || null } : r)));
+
   const onSave = () =>
     startTransition(async () => {
       setError(null);
       try {
-        if (!sizeLabel.trim()) throw new Error("Indicá el talle de este archivo");
-        const use = pieces.filter((p) => p.kind !== "otra");
-        const kinds = use.map((p) => p.kind);
-        if (new Set(kinds).size !== kinds.length) throw new Error("Hay dos piezas con el mismo tipo");
-        const sourcePath = file ? await uploadToProduction(`moldes/${model.id}`, file, "svg") : null;
+        const use = rows
+          .filter((r) => r.kind !== "otra")
+          .map((r) => ({ ...r, sizeLabel: r.sizeLabel ?? (fallbackSize.trim().toUpperCase() || null) }));
+        if (use.some((r) => !r.sizeLabel)) throw new Error("Hay piezas sin talle: escribilo en su grupo.");
+        const bySize = new Map<string, Row[]>();
+        for (const r of use) (bySize.get(r.sizeLabel!) ?? bySize.set(r.sizeLabel!, []).get(r.sizeLabel!)!).push(r);
+        for (const [size, list] of bySize) {
+          const kinds = list.map((p) => p.kind);
+          if (new Set(kinds).size !== kinds.length) throw new Error(`En el talle ${size} hay dos piezas con el mismo tipo.`);
+        }
+        const ext = file?.name.toLowerCase().endsWith(".pdf") ? "pdf" : "svg";
+        const sourcePath = file ? await uploadToProduction(`moldes/${model.id}`, file, ext) : null;
         await savePatternPieces(
           model.id,
           use.map((p) => ({
-            sizeLabel: sizeLabel.trim(),
+            sizeLabel: p.sizeLabel!,
             kind: p.kind,
             outline: p.outline.map((q) => [Math.round(q.x * 100) / 100, Math.round(q.y * 100) / 100] as [number, number]),
             widthMm: p.widthMm,
@@ -149,10 +174,9 @@ function ModelDetail({ model, sizes }: { model: Model; sizes: Record<string, str
             sourceFilePath: sourcePath,
           }))
         );
-        setStatus(`Talle ${sizeLabel} guardado con ${use.length} piezas.`);
-        setPieces([]);
+        setStatus(`Guardados ${bySize.size} talles (${use.length} piezas).`);
+        setRows([]);
         setFile(null);
-        setSizeLabel("");
         router.refresh();
       } catch (e) {
         setError(e instanceof Error ? e.message : String(e));
@@ -202,47 +226,61 @@ function ModelDetail({ model, sizes }: { model: Model; sizes: Record<string, str
       </Card>
 
       <Card className="flex flex-col gap-3">
-        <h2 className="text-sm font-medium text-zinc-900">Importar un talle</h2>
+        <h2 className="text-sm font-medium text-zinc-900">Importar moldería</h2>
         <p className="text-xs text-zinc-500">
-          En Corel: seleccioná las piezas del talle y exportá como SVG, a escala real (1:1). Las piezas se detectan solas; revisá que cada una tenga el tipo correcto.
+          Exportá desde Corel a PDF o SVG, a escala real (1:1). Puede ser un archivo con un talle o con todos: si debajo de cada grupo de piezas está escrito el talle, se asignan solos. Revisá talles y tipos antes de guardar.
         </p>
         <div className="grid grid-cols-2 gap-3">
-          <Input label="Talle" value={sizeLabel} onChange={(e) => setSizeLabel(e.target.value)} placeholder="L, 10, 4XL…" />
           <label className="text-xs font-medium text-zinc-500">
-            Archivo SVG
-            <input type="file" accept=".svg,image/svg+xml" className="mt-2 block w-full text-sm" onChange={(e) => e.target.files?.[0] && onFile(e.target.files[0])} />
+            Archivo PDF o SVG
+            <input type="file" accept=".pdf,.svg,application/pdf,image/svg+xml" className="mt-2 block w-full text-sm" onChange={(e) => e.target.files?.[0] && onFile(e.target.files[0])} />
           </label>
+          {groups.some(([k]) => !k) && (
+            <Input label="Talle de las piezas sin talle" value={fallbackSize} onChange={(e) => setFallbackSize(e.target.value)} placeholder="L, 10, XXL…" />
+          )}
         </div>
         {notes.map((n) => (
           <p key={n} className="text-xs text-amber-700">{n}</p>
         ))}
-        {pieces.length > 0 && (
-          <div className="flex flex-wrap gap-4">
-            {pieces.map((p, i) => (
-              <div key={i} className="flex flex-col items-center gap-2 rounded-md border border-zinc-200 p-2">
-                <svg viewBox={`-10 -10 ${p.widthMm + 20} ${p.heightMm + 20}`} height={160}>
-                  <path d={pathD(p.outline)} fill="#f4f4f5" stroke="#111" strokeWidth={2} />
-                </svg>
-                <span className="text-xs text-zinc-500">
-                  {p.widthMm.toFixed(0)} × {p.heightMm.toFixed(0)} mm
-                </span>
-                <select
-                  className="rounded-md border border-zinc-300 px-2 py-1 text-xs"
-                  value={p.kind}
-                  onChange={(e) => setPieces((ps) => ps.map((q, j) => (j === i ? { ...q, kind: e.target.value as PieceKind } : q)))}
-                >
-                  {KINDS.map((k) => (
-                    <option key={k.value} value={k.value}>{k.label}</option>
-                  ))}
-                </select>
-              </div>
-            ))}
+        {groups.map(([size, list]) => (
+          <div key={size || "sin-talle"} className="flex flex-col gap-2 rounded-md border border-zinc-200 p-3">
+            <div className="flex items-center gap-2">
+              <span className="text-xs text-zinc-500">Talle</span>
+              <input
+                className="w-24 rounded-md border border-zinc-300 px-2 py-1 text-sm font-medium"
+                defaultValue={size}
+                placeholder={fallbackSize || "?"}
+                onBlur={(e) => e.target.value.trim().toUpperCase() !== size && renameGroup(size, e.target.value)}
+              />
+              <span className="text-xs text-zinc-500">{list.length} piezas</span>
+            </div>
+            <div className="flex flex-wrap gap-3">
+              {list.map((p) => (
+                <div key={p.key} className="flex flex-col items-center gap-1">
+                  <svg viewBox={`-10 -10 ${p.widthMm + 20} ${p.heightMm + 20}`} height={90}>
+                    <path d={pathD(p.outline)} fill="#f4f4f5" stroke="#111" strokeWidth={3} />
+                  </svg>
+                  <span className="text-[11px] text-zinc-500">
+                    {p.widthMm.toFixed(1)} × {p.heightMm.toFixed(1)} mm
+                  </span>
+                  <select
+                    className="rounded-md border border-zinc-300 px-2 py-1 text-xs"
+                    value={p.kind}
+                    onChange={(e) => setRow(p.key, { kind: e.target.value as PieceKind })}
+                  >
+                    {KINDS.map((k) => (
+                      <option key={k.value} value={k.value}>{k.label}</option>
+                    ))}
+                  </select>
+                </div>
+              ))}
+            </div>
           </div>
-        )}
+        ))}
         {status && <p className="text-sm text-green-700">{status}</p>}
         {error && <p className="text-sm text-red-600">{error}</p>}
-        <Button onClick={onSave} disabled={isPending || !pieces.length} className="self-start">
-          Guardar talle
+        <Button onClick={onSave} disabled={isPending || !rows.length} className="self-start">
+          Guardar moldería
         </Button>
       </Card>
     </div>

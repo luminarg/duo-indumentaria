@@ -1,7 +1,8 @@
 import { assemblyTransforms, backgroundTransform, sizeScale } from "./assembly";
-import { bbox, offset, spanAtY } from "./geometry";
-import { baselineY, placeElement, safeZoneOverflow, sizeGroupOf, xFromWearerSide, yFromShoulderTop } from "./rules";
+import { bbox, compose, offset, spanAtY, translate } from "./geometry";
+import { baselineY, normalizeSize, placeElement, safeZoneOverflow, shoulderTop, sizeGroupOf, xFromWearerSide, yFromShoulderTop } from "./rules";
 import type {
+  Affine,
   AssemblyRule,
   DesignConfig,
   GarmentRequest,
@@ -9,6 +10,7 @@ import type {
   PlacedElement,
   PlacedText,
   PrintPiece,
+  PieceKind,
   TextStyle,
   Warning,
 } from "./types";
@@ -41,6 +43,29 @@ function fitText(
   return { heightMm: heightMm * k, widthMm: maxWidth, shrunk: true };
 }
 
+export const DESIGN_CLIP_INSET_MM = 1.5;
+
+/**
+ * Modo "piezas": lienzo del diseño → pieza de otro talle.
+ * Primero se lleva el arte a la pieza del talle base (deshaciendo su lugar y
+ * su giro en el archivo), después se escala en proporción al ancho desde el
+ * centro y el punto más alto del hombro. Así todo lo que está en el arte
+ * (escudo, logos) cae en las mismas unidades de la grilla en cada talle.
+ */
+export function designToPiece(ref: NonNullable<DesignConfig["background"]["pieces"]>[PieceKind], base: PatternPiece, target: PatternPiece): Affine {
+  const b = ref!.box;
+  const canvasToRefLocal: Affine =
+    ref!.rotation === 180 ? { a: -1, b: 0, c: 0, d: -1, e: b.maxX, f: b.maxY } : translate(-b.minX, -b.minY);
+  const bb = bbox(base.outline);
+  const toBase = compose(canvasToRefLocal, translate(bb.minX, bb.minY));
+  const tb = bbox(target.outline);
+  const s = (tb.maxX - tb.minX) / (bb.maxX - bb.minX);
+  const refL = { x: (bb.minX + bb.maxX) / 2, y: shoulderTop(base).y };
+  const refS = { x: (tb.minX + tb.maxX) / 2, y: shoulderTop(target).y };
+  const scale: Affine = { a: s, b: 0, c: 0, d: s, e: refS.x - s * refL.x, f: refS.y - s * refL.y };
+  return compose(toBase, scale);
+}
+
 export type BuildInput = {
   /** Piezas del modelo, de todos los talles. */
   pieces: PatternPiece[];
@@ -56,11 +81,12 @@ export type BuildResult = { prints: PrintPiece[]; warnings: Warning[]; missingSi
 export function buildPrintPieces({ pieces, assembly, design, garments, measure }: BuildInput): BuildResult {
   const bySize = new Map<string, PatternPiece[]>();
   for (const p of pieces) {
-    const list = bySize.get(p.sizeLabel) ?? [];
+    const k = normalizeSize(p.sizeLabel);
+    const list = bySize.get(k) ?? [];
     list.push(p);
-    bySize.set(p.sizeLabel, list);
+    bySize.set(k, list);
   }
-  const base = bySize.get(design.baseSizeLabel) ?? [];
+  const base = bySize.get(normalizeSize(design.baseSizeLabel)) ?? [];
   const prints: PrintPiece[] = [];
   const warnings: Warning[] = [];
   const missing = new Set<string>();
@@ -69,7 +95,7 @@ export function buildPrintPieces({ pieces, assembly, design, garments, measure }
   const cache = new Map<string, { scale: number; t: ReturnType<typeof assemblyTransforms> }>();
 
   for (const g of garments) {
-    const sizePieces = bySize.get(g.sizeLabel);
+    const sizePieces = bySize.get(normalizeSize(g.sizeLabel));
     if (!sizePieces?.length) {
       missing.add(g.sizeLabel);
       continue;
@@ -137,12 +163,28 @@ export function buildPrintPieces({ pieces, assembly, design, garments, measure }
       }
 
       const t = c.t.get(piece.id);
+      let bgT: Affine = t ? backgroundTransform(design.background, t, c.scale) : { a: 1, b: 0, c: 0, d: 1, e: 0, f: 0 };
+      let bgClip: PrintPiece["backgroundClip"] = null;
+      if (design.background.mode === "piezas") {
+        const ref = design.background.pieces?.[piece.kind];
+        const basePiece = base.find((p) => p.kind === piece.kind);
+        if (ref && basePiece) {
+          bgT = designToPiece(ref, basePiece, piece);
+          // 1,5 mm hacia adentro: deja afuera la línea de la pieza dibujada en el
+          // diseño (si no, aparece como un filete oscuro al escalar). Ese borde
+          // cae en la costura y queda cubierto por el color de fondo.
+          bgClip = offset(ref.outline, -DESIGN_CLIP_INSET_MM) ?? ref.outline;
+        } else {
+          bgClip = []; // sin arte para esta pieza: solo color de fondo
+        }
+      }
       prints.push({
         key: `${g.orderItemId}:${piece.id}`,
         piece,
         garment: g,
         sizeGroup: group,
-        backgroundTransform: t ? backgroundTransform(design.background, t, c.scale) : { a: 1, b: 0, c: 0, d: 1, e: 0, f: 0 },
+        backgroundTransform: bgT,
+        backgroundClip: bgClip,
         elements,
         texts,
         warnings: pieceWarnings,

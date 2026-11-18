@@ -8,6 +8,7 @@ export function defaultDesignConfig(): DesignConfig {
   return {
     baseSizeLabel: "L",
     background: {
+      mode: "piezas", // como se trabaja hoy: el diseño se hace sobre las piezas de un talle
       filePath: null,
       widthMm: 2000, // SUPUESTO: lienzo amplio que cubre la prenda armada
       heightMm: 1100,

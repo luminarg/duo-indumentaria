@@ -8,6 +8,8 @@ import { Input, Select } from "../../../components/ui/Input";
 import { approxMeasurer, buildPrintPieces, type TextMeasurer } from "@/lib/produccion/build";
 import { assemblyFromRows, garmentsFromItems, normalizeConfig, pieceFromRow, type AssemblyRow, type OrderItemRow, type PatternPieceRow } from "@/lib/produccion/db";
 import { exportRollPdf, pdfMeasurer } from "@/lib/produccion/exportPdf";
+import { pdfPrimitives } from "@/lib/produccion/pdfImport";
+import { detectDesignPieces } from "@/lib/produccion/designDetect";
 import { DEFAULT_SETTINGS, nest } from "@/lib/produccion/nesting";
 import { sampleMolds } from "@/lib/produccion/sampleMolds";
 import { DEFAULT_ASSEMBLY } from "@/lib/produccion/assembly";
@@ -152,10 +154,40 @@ export function ProductionWorkbench(props: {
   }
 
   const onBackground = (file: File) =>
-    run("Subiendo fondo…", async () => {
+    run("Subiendo diseño…", async () => {
       const pdf = await readPdf(file);
       const path = await uploadToProduction(`disenos/${orderId}`, file, "pdf");
       setAssets((a) => ({ ...a, [path]: pdf.bytes }));
+      if (config.background.mode === "piezas") {
+        // Buscar las piezas dibujadas y sobre qué talle está hecho el diseño.
+        const { prim } = await pdfPrimitives(pdf.bytes);
+        const det = detectDesignPieces(prim, pieces);
+        update((c) => ({
+          ...c,
+          baseSizeLabel: det.baseSizeLabel ?? c.baseSizeLabel,
+          // El escudo y los logos ya vienen en el diseño: quedan solo los elementos con archivo propio.
+          elements: det.baseSizeLabel ? c.elements.filter((e) => e.filePath) : c.elements,
+          background: {
+            ...c.background,
+            filePath: path,
+            widthMm: pdf.widthMm,
+            heightMm: pdf.heightMm,
+            pieces: det.pieces,
+            color: det.dominantColor ?? c.background.color,
+          },
+        }));
+        const found = Object.keys(det.pieces).length;
+        if (det.baseSizeLabel) {
+          setMessage(
+            `Diseño hecho sobre el talle ${det.baseSizeLabel}: se reconocieron ${found} piezas.` +
+              (det.dominantColor ? ` Color de fondo: ${det.dominantColor}.` : "") +
+              (det.notes.length ? ` ${det.notes.join(" ")}` : "")
+          );
+        } else {
+          setError(det.notes.join(" "));
+        }
+        return;
+      }
       update((c) => ({ ...c, background: { ...c.background, filePath: path, widthMm: pdf.widthMm, heightMm: pdf.heightMm } }));
       setMessage(`Fondo cargado: ${pdf.widthMm.toFixed(0)} × ${pdf.heightMm.toFixed(0)} mm`);
     });
@@ -402,12 +434,27 @@ function DesignForm({
   return (
     <div className="flex flex-col gap-4">
       <Card className="flex flex-col gap-3">
-        <h2 className="text-sm font-medium text-zinc-900">Fondo</h2>
+        <h2 className="text-sm font-medium text-zinc-900">Diseño</h2>
+        <Select
+          label="Tipo de archivo"
+          value={config.background.mode}
+          onChange={(e) => update((c) => ({ ...c, background: { ...c.background, mode: e.target.value as "piezas" | "lienzo", pieces: undefined, filePath: null } }))}
+        >
+          <option value="piezas">Diseño sobre las piezas de un talle</option>
+          <option value="lienzo">Fondo continuo (rayas, trama) para recortar</option>
+        </Select>
         <label className="text-xs font-medium text-zinc-500">
-          PDF del fondo (exportado de Corel, sobre el talle {config.baseSizeLabel})
+          {config.background.mode === "piezas"
+            ? "PDF de Corel con las piezas ya diseñadas, a escala real"
+            : `PDF del fondo, dibujado sobre el talle ${config.baseSizeLabel}`}
           <input type="file" accept="application/pdf" className="mt-1 block w-full text-sm" onChange={(e) => e.target.files?.[0] && onBackground(e.target.files[0])} />
         </label>
-        {config.background.filePath && (
+        {config.background.filePath && config.background.mode === "piezas" && (
+          <p className="text-xs text-zinc-500">
+            Hecho sobre el talle {config.baseSizeLabel}. Piezas reconocidas: {Object.keys(config.background.pieces ?? {}).join(", ") || "ninguna"}. Cada talle toma el arte de su pieza, escalado en proporción.
+          </p>
+        )}
+        {config.background.filePath && config.background.mode === "lienzo" && (
           <p className="text-xs text-zinc-500">
             Lienzo de {config.background.widthMm.toFixed(0)} × {config.background.heightMm.toFixed(0)} mm. Su borde inferior, al centro, va en la línea de base del frente.
           </p>
@@ -422,7 +469,7 @@ function DesignForm({
             <option value="fijo">Mantiene el tamaño</option>
           </Select>
           <Input
-            label="Color liso (sin archivo)"
+            label="Color de fondo"
             type="color"
             value={config.background.color || "#ffffff"}
             onChange={(e) => update((c) => ({ ...c, background: { ...c.background, color: e.target.value } }))}

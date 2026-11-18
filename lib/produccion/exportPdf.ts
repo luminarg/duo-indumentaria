@@ -141,9 +141,13 @@ export async function exportRollPdf(layout: RollLayout, background: BackgroundRu
         const c = hexToRgb(background.color);
         page.pushOperators(setFillingRgbColor(c.red, c.green, c.blue), ...pathOps(outline), fill());
       }
-      if (bgPage) {
-        const m = compose(embeddedToCanvas(bgPage), print.backgroundTransform);
-        page.pushOperators(pushGraphicsState(), cm(m), drawObject(xobj(bgPage)), popGraphicsState());
+      const clipCanvas = print.backgroundClip;
+      if (bgPage && !(clipCanvas && clipCanvas.length === 0)) {
+        // Lienzo del diseño → pieza. En modo "piezas" se recorta además por la
+        // pieza del diseño, así no entra el contorno ni el arte de otra pieza.
+        page.pushOperators(pushGraphicsState(), cm(print.backgroundTransform));
+        if (clipCanvas && clipCanvas.length > 2) page.pushOperators(...pathOps(clipCanvas), clip(), endPath());
+        page.pushOperators(cm(embeddedToCanvas(bgPage)), drawObject(xobj(bgPage)), popGraphicsState());
       }
 
       // 2. Elementos anclados (escudo, sponsors), también recortados.

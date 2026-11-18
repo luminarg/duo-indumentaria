@@ -6,14 +6,21 @@ cortar con láser. Está en el panel en **Producción**, en `/panel/produccion`.
 ## Flujo
 
 1. **Moldería** (`/panel/produccion/moldes`): se crea un modelo, por ejemplo
-   "Remera cuello redondo", y se importa cada talle desde un SVG exportado de
-   Corel a escala 1:1. Las piezas se detectan solas y se revisa el tipo de
-   cada una: frente, espalda, manga izquierda, manga derecha.
+   "Remera clásica", y se importa la moldería exportada de Corel a escala
+   1:1, en PDF o SVG.
+   - Puede venir un talle por archivo o todos juntos. Si debajo de cada grupo
+     de piezas está escrito el talle, se asigna solo. Si algún rótulo está
+     pasado a curvas, se deduce por la serie (2, 4, 6… → 10, 12, 14) y avisa.
+   - Las líneas de 3 mm de Corel se leen como el contorno: la pieza es el
+     borde interior.
+   - Antes de guardar se revisan el talle de cada grupo y el tipo de cada
+     pieza: frente, espalda, manga izquierda, manga derecha.
 2. **Pedido en "Diseño en moldería"** (`/panel/produccion/[id]`):
    - Se elige el artículo del pedido, la variante (jugadores o arquero) y el
      molde.
-   - Se sube el fondo como PDF de Corel, dibujado sobre el talle base, y el
-     arte de escudo y sponsors.
+   - Se sube el diseño: el PDF de Corel con las piezas ya diseñadas sobre un
+     talle, como se trabaja hoy. El sistema reconoce cada pieza, sobre qué
+     talle está hecho y el color de fondo.
    - La vista previa muestra todos los talles del pedido, con la grilla de 10
      unidades y la zona segura.
 3. **Armar rollo**: acomoda todas las piezas en el ancho de 1550 mm y calcula
@@ -42,7 +49,24 @@ salieron del cuestionario y hay que confirmarlos. Son los tamaños del escudo,
 la posición del número y el nombre y el alto de la etiqueta. Se pueden
 cambiar por diseño desde el panel.
 
-## Rayas que coinciden (armado)
+## Diseño sobre las piezas de un talle (modo por defecto)
+
+Cada pieza de cualquier talle toma el arte de su pieza en el diseño. Ese arte
+se escala en proporción al ancho, desde el centro y el punto más alto del
+hombro. Con eso, todo lo que está dibujado en el arte (escudo, logos, frases)
+cae en las mismas unidades de la grilla de 10 en todos los talles: es la
+misma regla que se aplica a mano.
+
+- Las piezas giradas 180° en el archivo se reconocen y se enderezan.
+- El arte se recorta 1,5 mm hacia adentro de la línea de la pieza del diseño,
+  para que no aparezca esa línea al escalar. Ese borde cae en la costura y lo
+  cubre el color de fondo.
+- Si en otro talle la pieza es más larga en proporción, lo que no cubre el
+  arte queda con el color de fondo.
+- Las piezas del diseño que no están en la moldería (por ejemplo, el cuello)
+  no se usan.
+
+## Fondo continuo (modo "lienzo"): rayas que coinciden
 
 Funciona como el PowerClip de Corel: hay un solo lienzo de fondo por prenda y
 cada pieza se recorta de él.
@@ -64,7 +88,10 @@ con `model_assembly.offset_x/offset_y`.
   - `build.ts`: piezas a imprimir, con nombres, números y etiqueta.
   - `nesting.ts`: tizada.
   - `exportPdf.ts`: PDF vectorial con pdf-lib.
-  - `svgImport.ts`: importación de moldes, corre en el navegador.
+  - `vectorImport.ts`: importación de moldes desde SVG, y la agrupación por
+    talle de SVG y PDF.
+  - `pdfImport.ts`: lectura de PDF de Corel.
+  - `designDetect.ts`: reconoce las piezas del PDF de diseño.
   - `sampleMolds.ts`: moldes de prueba.
 - `lib/produccion/produccion.test.ts`: tests del motor. Se corren con
   `npm test`.
@@ -78,8 +105,7 @@ pasar por una Server Action.
 
 ## Pendiente
 
-- Importar moldes directo desde PDF de Corel. Hoy se usa SVG; falta ver un
-  archivo real.
+- Sumar el cuello (tira) a la moldería, si se imprime en el mismo rollo.
 - Validar el armado de mangas y los offsets con un archivo real de rayas.
 - Mejorar el acomodo del rollo (nesting real) comparando con la macro actual.
 - Borde (contorno) en nombres y números, y tipografías propias por diseño.
