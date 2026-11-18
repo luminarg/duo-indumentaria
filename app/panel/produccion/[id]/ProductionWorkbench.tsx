@@ -10,13 +10,16 @@ import { approxMeasurer, buildPrintPieces, type TextMeasurer } from "@/lib/produ
 import { assemblyFromRows, garmentsFromItems, normalizeConfig, pieceFromRow, type AssemblyRow, type OrderItemRow, type PatternPieceRow } from "@/lib/produccion/db";
 import { capHeightRatio, exportRollPdf, pdfMeasurer } from "@/lib/produccion/exportPdf";
 import { cssFamilyFor, usedFonts, type FontEntry } from "@/lib/produccion/fonts";
+import { addCollarPanel, collarStripCount } from "@/lib/produccion/collars";
+import { groupIntoRolls } from "@/lib/produccion/rolls";
+import { sizeSheets } from "@/lib/produccion/sizeSheets";
 import { pdfPrimitives } from "@/lib/produccion/pdfImport";
 import { detectDesignPieces } from "@/lib/produccion/designDetect";
 import { DEFAULT_SETTINGS, nest } from "@/lib/produccion/nesting";
 import { sampleMolds } from "@/lib/produccion/sampleMolds";
 import { DEFAULT_ASSEMBLY } from "@/lib/produccion/assembly";
 import type { AnchoredElement, DesignConfig, PieceKind, RollLayout, WearerSide } from "@/lib/produccion/types";
-import { listProductionFonts, saveDesign, saveLayout, signedProductionUrls } from "../actions";
+import { listProductionFonts, saveDesign, saveJob, saveJobLayout, saveLayout, signedProductionUrls } from "../actions";
 import { downloadProductionFiles, uploadFont, uploadToProduction } from "../upload";
 import { PiecePreview, RollPreview, type FontInfo } from "../Previews";
 
@@ -33,8 +36,9 @@ function sizeSortKey(label: string): number {
 
 type Requirement = { id: string; description: string; article_type_id: string | null };
 type Model = { id: string; name: string; neck: string | null; base_size_label: string; article_type_id: string | null };
-type DesignRow = { id: string; requirement_id: string | null; model_id: string | null; variant: string; version: number; config: unknown; created_at: string };
-type LayoutRow = { id: string; linear_meters: number; piece_count: number; pdf_path: string | null; created_at: string };
+type DesignRow = { id: string; requirement_id: string | null; component_id?: string | null; model_id: string | null; variant: string; version: number; config: unknown; created_at: string };
+type ComponentRow = { id: string; article_type_id: string; name: string; model_id: string | null; copy_number: boolean; copy_name: boolean; sort_order: number };
+type LayoutRow = { id: string; linear_meters: number; piece_count: number; pdf_path: string | null; created_at: string; requirement_id?: string | null; component_id?: string | null; variant?: string | null };
 
 export function ProductionWorkbench(props: {
   orderId: string;
@@ -47,27 +51,46 @@ export function ProductionWorkbench(props: {
   assembly: (AssemblyRow & { model_id: string })[];
   designs: DesignRow[];
   layouts: LayoutRow[];
+  components?: ComponentRow[];
+  /** Trabajo libre (escalado para un tercero): sin pedido, sin artículos ni estados. */
+  job?: { id: string; onModelChange?: (modelId: string) => void };
 }) {
+  const job = props.job;
   const { orderId, items, sizeLabels, requirements, models, designs, layouts } = props;
-  // Diseño guardado y molde sugerido para un artículo + variante.
-  const contextFor = (reqId: string, v: "jugador" | "arquero") => {
-    const saved = designs.find((d) => (d.requirement_id ?? "") === reqId && d.variant === v);
+  // Prendas del artículo (combo). Sin prendas cargadas = una sola prenda ("").
+  const componentsFor = (reqId: string): ComponentRow[] => {
     const req = requirements.find((r) => r.id === reqId);
+    return (props.components ?? []).filter((c) => req?.article_type_id && c.article_type_id === req.article_type_id).sort((a, b) => a.sort_order - b.sort_order);
+  };
+  // Diseño guardado y molde sugerido para un artículo + prenda + variante.
+  const contextFor = (reqId: string, compId: string, v: "jugador" | "arquero") => {
+    const saved = designs.find((d) => (d.requirement_id ?? "") === reqId && (d.component_id ?? "") === compId && d.variant === v);
+    const req = requirements.find((r) => r.id === reqId);
+    const comp = componentsFor(reqId).find((c) => c.id === compId);
     const match = models.find((m) => req?.article_type_id && m.article_type_id === req.article_type_id);
-    const modelId = saved?.model_id ?? match?.id ?? models[0]?.id ?? SAMPLE;
+    const modelId = saved?.model_id ?? comp?.model_id ?? match?.id ?? models[0]?.id ?? SAMPLE;
     const base = models.find((m) => m.id === modelId)?.base_size_label;
     return { modelId, config: normalizeConfig(saved?.config, base) };
   };
 
-  const [requirementId, setRequirementId] = useState<string>(requirements[0]?.id ?? "");
+  const firstReq = requirements[0]?.id ?? "";
+  const firstComp = componentsFor(firstReq)[0]?.id ?? "";
+  const [requirementId, setRequirementId] = useState<string>(firstReq);
+  const [componentId, setComponentId] = useState<string>(firstComp);
   const [variant, setVariant] = useState<"jugador" | "arquero">("jugador");
-  const [modelId, setModelId] = useState<string>(() => contextFor(requirements[0]?.id ?? "", "jugador").modelId);
-  const [config, setConfig] = useState<DesignConfig>(() => contextFor(requirements[0]?.id ?? "", "jugador").config);
+  const [modelId, setModelId] = useState<string>(() => contextFor(firstReq, firstComp, "jugador").modelId);
+  const [config, setConfig] = useState<DesignConfig>(() => contextFor(firstReq, firstComp, "jugador").config);
   const [layout, setLayout] = useState<RollLayout | null>(null);
+  // Largo de cada paño (página del PDF) y del rollo de tela/papel, en metros.
+  const [panoM, setPanoM] = useState(5);
+  const [rolloM, setRolloM] = useState(0);
 
-  const selectContext = (reqId: string, v: "jugador" | "arquero") => {
-    const c = contextFor(reqId, v);
+  const selectContext = (reqId: string, compId: string, v: "jugador" | "arquero") => {
+    const comps = componentsFor(reqId);
+    const cid = comps.some((c) => c.id === compId) ? compId : (comps[0]?.id ?? "");
+    const c = contextFor(reqId, cid, v);
     setRequirementId(reqId);
+    setComponentId(cid);
     setVariant(v);
     setModelId(c.modelId);
     setConfig(c.config);
@@ -143,10 +166,14 @@ export function ProductionWorkbench(props: {
     [modelId, props.assembly]
   );
 
+  const component = componentsFor(requirementId).find((c) => c.id === componentId) ?? null;
   const garments = useMemo(() => {
     const filtered = requirementId ? items.filter((i) => i.requirement_id === requirementId) : items;
-    return garmentsFromItems(filtered, sizeLabels).filter((g) => g.variant === variant);
-  }, [items, requirementId, sizeLabels, variant]);
+    return garmentsFromItems(filtered, sizeLabels)
+      .filter((g) => g.variant === variant)
+      // En un combo, cada prenda lleva solo los datos que corresponden (el short: número, sin nombre).
+      .map((g) => (component ? { ...g, name: component.copy_name ? g.name : null, number: component.copy_number ? g.number : null } : g));
+  }, [items, requirementId, sizeLabels, variant, component]);
 
   const build = useMemo(
     () => buildPrintPieces({ pieces, assembly, design: config, garments, measure }),
@@ -255,6 +282,15 @@ export function ProductionWorkbench(props: {
       setMessage(`Indicador cargado: ${pdf.widthMm.toFixed(0)} × ${pdf.heightMm.toFixed(0)} mm. La letra del talle se agrega sola.`);
     });
 
+  const onCollarFile = (file: File) =>
+    run("Subiendo arte del cuello…", async () => {
+      const pdf = await readPdf(file);
+      const path = await uploadToProduction(`disenos/${orderId}`, file, "pdf");
+      setAssets((a) => ({ ...a, [path]: pdf.bytes }));
+      update((c) => ({ ...c, collars: { ...c.collars, artPath: path, artAspect: pdf.heightMm / pdf.widthMm } }));
+      setMessage("Arte del cuello cargado: se repite a lo largo de cada tira, al alto de la tira.");
+    });
+
   const onFontFile = async (file: File): Promise<string | null> => {
     let path: string | null = null;
     await run("Subiendo fuente…", async () => {
@@ -279,9 +315,15 @@ export function ProductionWorkbench(props: {
     startTransition(async () => {
       setError(null);
       try {
+        if (job) {
+          await saveJob({ id: job.id, modelId: modelId === SAMPLE ? null : modelId, design: { variant, config } });
+          setMessage("Diseño del trabajo guardado.");
+          return;
+        }
         const { version } = await saveDesign({
           orderId,
           requirementId: requirementId || null,
+          componentId: componentId || null,
           modelId: modelId === SAMPLE ? null : modelId,
           variant,
           config,
@@ -295,19 +337,20 @@ export function ProductionWorkbench(props: {
   const onNest = () =>
     run("Armando el rollo…", async () => {
       if (!build.prints.length) throw new Error("No hay piezas para armar: revisá talles y moldes.");
-      setLayout(nest(build.prints, DEFAULT_SETTINGS));
+      if (!(panoM >= 1)) throw new Error("El largo del paño tiene que ser de al menos 1 m.");
+      const roll = nest(build.prints, { ...DEFAULT_SETTINGS, maxSegmentLengthMm: panoM * 1000 });
+      setLayout(addCollarPanel(roll, config.collars, garments.length, config.background.color));
     });
 
-  async function makePdf(l: RollLayout) {
-    const paths = [config.background.filePath, config.sizeIndicator.artPath, ...config.elements.map((e) => e.filePath)].filter(Boolean) as string[];
+  async function makePdfBytes(l: RollLayout) {
+    const paths = [config.background.filePath, config.sizeIndicator.artPath, config.collars.artPath, ...config.elements.map((e) => e.filePath)].filter(Boolean) as string[];
     const missing = paths.filter((p) => !assets[p]);
     const downloaded = missing.length ? await downloadProductionFiles(missing) : {};
     const all = { ...assets, ...downloaded };
     if (missing.length) setAssets(all);
     const elements: Record<string, Uint8Array> = {};
     for (const e of config.elements) if (e.filePath && all[e.filePath]) elements[e.filePath] = all[e.filePath];
-    const ia = config.sizeIndicator.artPath;
-    if (ia && all[ia]) elements[ia] = all[ia];
+    for (const p of [config.sizeIndicator.artPath, config.collars.artPath]) if (p && all[p]) elements[p] = all[p];
     const bg = config.background.filePath ? all[config.background.filePath] : null;
     const fonts: Record<string, Uint8Array> = {};
     const wanted = usedFonts(config);
@@ -319,28 +362,93 @@ export function ProductionWorkbench(props: {
       fonts[f] = b;
     }
     const { bytes } = await exportRollPdf(l, config.background, { background: bg, elements, fonts });
-    return new Blob([bytes as BlobPart], { type: "application/pdf" });
+    return bytes;
   }
+  async function makePdf(l: RollLayout) {
+    return new Blob([(await makePdfBytes(l)) as BlobPart], { type: "application/pdf" });
+  }
+
+  const saveBlob = (blob: Blob, name: string) => {
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = name;
+    a.click();
+    setTimeout(() => URL.revokeObjectURL(url), 10_000);
+  };
+
+  // Diseño escalado sin acomodar en rollo: una página por talle con su juego de piezas.
+  const onDownloadBySize = () =>
+    run("Generando PDF por talle…", async () => {
+      if (!build.prints.length) throw new Error("No hay piezas: revisá talles y moldes.");
+      const sheets = sizeSheets(build.prints, DEFAULT_SETTINGS);
+      const out = await PDFDocument.create();
+      out.setTitle("Diseño escalado por talle");
+      for (const sh of sheets) {
+        const src = await PDFDocument.load(await makePdfBytes(sh.layout));
+        const pages = await out.copyPages(src, src.getPageIndices());
+        pages.forEach((pg) => out.addPage(pg));
+      }
+      saveBlob(new Blob([(await out.save()) as BlobPart], { type: "application/pdf" }), `talles-${orderId.slice(0, 8)}.pdf`);
+      setMessage(`PDF por talle: ${sheets.map((x) => x.size).join(", ")} (una página por talle, sin nombres ni números).`);
+    });
 
   const onDownload = () =>
     run("Generando PDF…", async () => {
       if (!layout) return;
-      const blob = await makePdf(layout);
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement("a");
-      a.href = url;
-      a.download = `rollo-${orderId.slice(0, 8)}.pdf`;
-      a.click();
-      setTimeout(() => URL.revokeObjectURL(url), 10_000);
+      saveBlob(await makePdf(layout), `rollo-${orderId.slice(0, 8)}.pdf`);
     });
+
+  // Todas las prendas del pedido (artículo × prenda × variante) que llevan rollo.
+  const ctxKey = (req: string, comp: string, v: string) => `${req}|${comp}|${v}`;
+  const allContexts = useMemo(() => {
+    const out: { key: string; label: string }[] = [];
+    const reqIds = requirements.length ? requirements.map((r) => r.id) : [""];
+    for (const req of reqIds) {
+      const its = req ? items.filter((i) => i.requirement_id === req) : items;
+      const variants = [...new Set(its.map((i) => (i.variant === "arquero" ? "arquero" : "jugador")))];
+      const comps = componentsFor(req);
+      const reqName = requirements.find((r) => r.id === req)?.description ?? "Prendas";
+      for (const v of variants)
+        for (const c of comps.length ? comps : [null])
+          out.push({ key: ctxKey(req, c?.id ?? "", v), label: [reqName, c?.name, v === "arquero" ? "arquero" : null].filter(Boolean).join(" · ") });
+    }
+    return out;
+    // componentsFor depende solo de props
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [requirements, items, props.components]);
+  const [savedKeys, setSavedKeys] = useState<Set<string>>(
+    () => new Set(layouts.filter((l) => l.variant).map((l) => ctxKey(l.requirement_id ?? "", l.component_id ?? "", l.variant!)))
+  );
+  const pendingRolls = allContexts.filter((c) => !savedKeys.has(c.key));
 
   const onSaveRoll = () =>
     run("Guardando rollo…", async () => {
       if (!layout) return;
       const blob = await makePdf(layout);
       const path = await uploadToProduction(`rollos/${orderId}`, blob, "pdf");
-      await saveLayout({ orderId, pdfPath: path, lengthMm: layout.lengthMm, pieceCount: layout.placed.length, advanceStatus: true });
-      setMessage(`Rollo guardado: ${(layout.lengthMm / 1000).toFixed(2)} m lineales. El pedido pasó a Sublimación / estampado.`);
+      if (job) {
+        await saveJobLayout({ jobId: job.id, pdfPath: path, lengthMm: layout.lengthMm, pieceCount: layout.placed.length });
+        setMessage(`Rollo guardado: ${(layout.lengthMm / 1000).toFixed(2)} m lineales.`);
+        return;
+      }
+      const key = ctxKey(requirementId, componentId, variant);
+      const missing = pendingRolls.filter((c) => c.key !== key);
+      await saveLayout({
+        orderId,
+        pdfPath: path,
+        lengthMm: layout.lengthMm,
+        pieceCount: layout.placed.length,
+        advanceStatus: missing.length === 0,
+        requirementId: requirementId || null,
+        componentId: componentId || null,
+        variant,
+      });
+      setSavedKeys((s) => new Set([...s, key]));
+      setMessage(
+        `Rollo guardado: ${(layout.lengthMm / 1000).toFixed(2)} m lineales. ` +
+          (missing.length ? `Faltan rollos de: ${missing.map((m) => m.label).join(", ")}.` : "Están todas las prendas: el pedido pasó a Sublimación / estampado.")
+      );
     });
 
   const openLayout = async (path: string) => {
@@ -358,8 +466,9 @@ export function ProductionWorkbench(props: {
         </p>
       )}
 
-      <Card className="grid gap-4 md:grid-cols-4">
-        <Select label="Artículo del pedido" value={requirementId} onChange={(e) => selectContext(e.target.value, variant)}>
+      <Card className="grid gap-4 md:grid-cols-5">
+        {!job && (
+        <Select label="Artículo del pedido" value={requirementId} onChange={(e) => selectContext(e.target.value, componentId, variant)}>
           {requirements.map((r) => (
             <option key={r.id} value={r.id}>
               {r.description}
@@ -367,11 +476,21 @@ export function ProductionWorkbench(props: {
           ))}
           <option value="">Todas las prendas</option>
         </Select>
-        <Select label="Variante" value={variant} onChange={(e) => selectContext(requirementId, e.target.value as "jugador" | "arquero")}>
+        )}
+        {!job && componentsFor(requirementId).length > 0 && (
+          <Select label="Prenda" value={componentId} onChange={(e) => selectContext(requirementId, e.target.value, variant)}>
+            {componentsFor(requirementId).map((c) => (
+              <option key={c.id} value={c.id}>
+                {c.name}
+              </option>
+            ))}
+          </Select>
+        )}
+        <Select label="Variante" value={variant} onChange={(e) => selectContext(requirementId, componentId, e.target.value as "jugador" | "arquero")}>
           <option value="jugador">Jugadores</option>
           <option value="arquero">Arquero</option>
         </Select>
-        <Select label="Molde" value={modelId} onChange={(e) => { setModelId(e.target.value); setLayout(null); }}>
+        <Select label="Molde" value={modelId} onChange={(e) => { setModelId(e.target.value); setLayout(null); job?.onModelChange?.(e.target.value); }}>
           {models.map((m) => (
             <option key={m.id} value={m.id}>
               {m.name}
@@ -401,7 +520,7 @@ export function ProductionWorkbench(props: {
       )}
 
       <div className="grid gap-6 lg:grid-cols-[380px_1fr]">
-        <DesignForm config={config} update={update} onBackground={onBackground} onElementFile={onElementFile} onIndicatorFile={onIndicatorFile} fonts={fontList} onFontFile={onFontFile} />
+        <DesignForm config={config} update={update} onBackground={onBackground} onElementFile={onElementFile} onIndicatorFile={onIndicatorFile} fonts={fontList} onFontFile={onFontFile} onCollarFile={onCollarFile} garmentCount={garments.length} />
 
         <div className="flex flex-col gap-4">
           <Card>
@@ -434,17 +553,63 @@ export function ProductionWorkbench(props: {
           <Card>
             <div className="mb-3 flex flex-wrap items-center gap-3">
               <h2 className="mr-auto text-sm font-medium text-zinc-900">Rollo</h2>
+              <div className="w-28">
+                <Num label="Paños de (m)" step={0.5} value={panoM} onChange={(n) => { setPanoM(n); setLayout(null); }} />
+              </div>
+              <div className="w-32">
+                <Num label="Rollo de (m)" step={1} value={rolloM} onChange={(n) => { setRolloM(n); }} hint="0 = sin límite" />
+              </div>
               <Button variant="secondary" onClick={onSaveDesign} disabled={isPending}>Guardar diseño</Button>
               <Button variant="secondary" onClick={onNest} disabled={!!busy || !build.prints.length}>Armar rollo</Button>
-              <Button variant="secondary" onClick={onDownload} disabled={!!busy || !layout}>Descargar PDF</Button>
-              <Button onClick={onSaveRoll} disabled={!!busy || !layout || modelId === SAMPLE}>Guardar y pasar a sublimación</Button>
+              <Button variant="secondary" onClick={onDownload} disabled={!!busy || !layout}>Descargar rollo</Button>
+              <Button variant="secondary" onClick={onDownloadBySize} disabled={!!busy || !build.prints.length}>PDF por talle</Button>
+              <Button onClick={onSaveRoll} disabled={!!busy || !layout || modelId === SAMPLE}>Guardar rollo</Button>
             </div>
+            {!job && allContexts.length > 1 && (
+              <p className="text-xs text-zinc-500">
+                {pendingRolls.length
+                  ? `Rollos pendientes: ${pendingRolls.map((c) => c.label).join(" · ")}. El pedido pasa a sublimación cuando estén todos.`
+                  : "Todas las prendas tienen su rollo guardado."}
+              </p>
+            )}
             {layout && (
               <div className="mt-3 flex flex-col gap-3">
                 <p className="text-sm text-zinc-700">
                   <b>{(layout.lengthMm / 1000).toFixed(2)} m lineales</b> en {DEFAULT_SETTINGS.rollWidthMm} mm · {layout.placed.length} piezas ·{" "}
-                  {layout.segments.length} {layout.segments.length === 1 ? "tramo" : "tramos"} (una página del PDF por tramo)
+                  {layout.segments.length} {layout.segments.length === 1 ? "paño" : "paños"} de hasta {panoM} m (una página del PDF por paño; ninguna pieza queda partida)
                 </p>
+                <ul className="text-xs text-zinc-600">
+                  {layout.segments.map((sg, i) => (
+                    <li key={i}>
+                      Paño {i + 1}: {((sg.endMm - sg.startMm) / 1000).toFixed(2)} m{sg.collars ? " (cuellos)" : ""}
+                    </li>
+                  ))}
+                </ul>
+                {rolloM > 0 &&
+                  (() => {
+                    const g = groupIntoRolls(layout, rolloM * 1000);
+                    return (
+                      <div className="text-sm text-zinc-700">
+                        {g.rolls.length === 1 ? (
+                          <p>Entra en un rollo de {rolloM} m (sobran {(rolloM - g.rolls[0].lengthMm / 1000).toFixed(2)} m).</p>
+                        ) : (
+                          <p className="text-amber-700">
+                            No entra en un rollo de {rolloM} m: hacen falta {g.rolls.length} rollos.
+                          </p>
+                        )}
+                        {g.rolls.length > 1 && (
+                          <ul className="text-xs">
+                            {g.rolls.map((rl) => (
+                              <li key={rl.index}>
+                                Rollo {rl.index}: paños {rl.firstPano}–{rl.lastPano} · {(rl.lengthMm / 1000).toFixed(2)} m
+                              </li>
+                            ))}
+                          </ul>
+                        )}
+                        {g.tooLong.length > 0 && <p className="text-red-600">Los paños {g.tooLong.join(", ")} son más largos que el rollo: bajá el largo del paño.</p>}
+                      </div>
+                    );
+                  })()}
                 <div className="max-h-[600px] overflow-y-auto">
                   <RollPreview layout={layout} />
                 </div>
@@ -510,6 +675,8 @@ function DesignForm({
   onIndicatorFile,
   fonts,
   onFontFile,
+  onCollarFile,
+  garmentCount,
 }: {
   config: DesignConfig;
   update: (fn: (c: DesignConfig) => DesignConfig) => void;
@@ -518,6 +685,8 @@ function DesignForm({
   onIndicatorFile: (f: File) => void;
   fonts: FontEntry[];
   onFontFile: (f: File) => Promise<string | null>;
+  onCollarFile: (f: File) => void;
+  garmentCount: number;
 }) {
   const fontSelect = (label: string, value: string | undefined, set: (font: string) => void) => (
     <FontSelect label={label} value={value} fonts={fonts} onChange={set} onUpload={async (f) => { const p = await onFontFile(f); if (p) set(p); }} />
@@ -712,6 +881,37 @@ function DesignForm({
               <Num label="Alto de la letra (mm)" value={config.sizeIndicator.textHeightMm} onChange={(n) => update((c) => ({ ...c, sizeIndicator: { ...c.sizeIndicator, textHeightMm: n } }))} />
               {fontSelect("Fuente de la letra", config.sizeIndicator.font, (font) => update((c) => ({ ...c, sizeIndicator: { ...c.sizeIndicator, font } })))}
             </div>
+          </div>
+        )}
+      </Card>
+      <Card className="flex flex-col gap-3">
+        <label className="flex items-center gap-2 text-sm font-medium text-zinc-900">
+          <input type="checkbox" checked={config.collars.enabled} onChange={(e) => update((c) => ({ ...c, collars: { ...c.collars, enabled: e.target.checked } }))} />
+          Cuellos sublimados (tiras al final del rollo)
+        </label>
+        {config.collars.enabled && (
+          <div className="flex flex-col gap-2">
+            <p className="text-xs text-zinc-500">
+              {collarStripCount(garmentCount, config.collars)} tiras de {config.collars.stripHeightMm} mm a lo ancho del rollo
+              ({(((collarStripCount(garmentCount, config.collars) * config.collars.stripHeightMm) / 1000)).toFixed(2)} m), sin marcas: la costurera corta a demanda.
+            </p>
+            <div className="grid grid-cols-2 gap-2">
+              <Num label="Alto de la tira (mm)" value={config.collars.stripHeightMm} onChange={(n) => update((c) => ({ ...c, collars: { ...c.collars, stripHeightMm: n } }))} />
+              <Num label="Cuellos por tira" value={config.collars.necksPerStrip} onChange={(n) => update((c) => ({ ...c, collars: { ...c.collars, necksPerStrip: n } }))} />
+              <Num label="Tiras de más" value={config.collars.extraStrips} onChange={(n) => update((c) => ({ ...c, collars: { ...c.collars, extraStrips: n } }))} hint="Por si hay que rehacer" />
+              <Input label="Color (vacío = fondo)" value={config.collars.color ?? ""} placeholder={config.background.color ?? "#FFFFFF"} onChange={(e) => update((c) => ({ ...c, collars: { ...c.collars, color: e.target.value || null } }))} />
+              <Num label="Línea divisoria (mm)" step={0.1} value={config.collars.separatorMm} onChange={(n) => update((c) => ({ ...c, collars: { ...c.collars, separatorMm: n } }))} />
+              <Input label="Color de la línea" value={config.collars.separatorColor} onChange={(e) => update((c) => ({ ...c, collars: { ...c.collars, separatorColor: e.target.value || "auto" } }))} hint="auto = contrasta" />
+            </div>
+            <label className="text-xs font-medium text-zinc-500">
+              Arte de la tira (opcional, PDF que se repite: rayas, textura) {config.collars.artPath ? "(cargado)" : ""}
+              <input type="file" accept="application/pdf" className="mt-1 block w-full text-sm" onChange={(e) => e.target.files?.[0] && onCollarFile(e.target.files[0])} />
+            </label>
+            {config.collars.artPath && (
+              <button type="button" className="self-start text-xs text-red-600 hover:underline" onClick={() => update((c) => ({ ...c, collars: { ...c.collars, artPath: null } }))}>
+                Quitar arte (queda el color liso)
+              </button>
+            )}
           </div>
         )}
       </Card>

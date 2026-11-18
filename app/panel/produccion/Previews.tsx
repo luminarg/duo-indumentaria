@@ -128,6 +128,24 @@ export function RollPreview({ layout }: { layout: RollLayout }) {
       {layout.segments.slice(1).map((s) => (
         <line key={s.startMm} x1={0} y1={s.startMm} x2={W} y2={s.startMm} stroke="#ef4444" strokeWidth={4} strokeDasharray="20 14" />
       ))}
+      {layout.segments.map((s) =>
+        s.collars ? (
+          <g key={"c" + s.startMm}>
+            {Array.from({ length: s.collars.strips }, (_, i) => (
+              <rect
+                key={i}
+                x={layout.settings.edgeMarginMm}
+                y={s.collars!.startMm + i * s.collars!.stripHeightMm}
+                width={W - 2 * layout.settings.edgeMarginMm}
+                height={s.collars!.stripHeightMm}
+                fill={s.collars!.color}
+                stroke={s.collars!.separatorColor}
+                strokeWidth={3}
+              />
+            ))}
+          </g>
+        ) : null
+      )}
       {layout.placed.map((p) => {
         const b = bbox(p.outer);
         return (

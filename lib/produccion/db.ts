@@ -59,6 +59,7 @@ export function normalizeConfig(raw: unknown, baseSizeLabel?: string): DesignCon
       ...(c.sizeTag && !("corner" in c.sizeTag) ? { corner: d.sizeTag.corner, marginMm: d.sizeTag.marginMm, heightMm: d.sizeTag.heightMm } : {}),
     },
     sizeIndicator: { ...d.sizeIndicator, ...(c.sizeIndicator ?? {}) },
+    collars: { ...d.collars, ...(c.collars ?? {}) },
     elements: c.elements ?? d.elements,
   };
 }

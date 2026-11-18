@@ -76,6 +76,8 @@ export type ExportAssets = {
   elements?: Record<string, Uint8Array>;
   /** Fuentes TTF/OTF por nombre. Helvetica-Bold está siempre. */
   fonts?: Record<string, Uint8Array>;
+  /** Fondos por ruta, para rollos con varias prendas o diseños. */
+  backgrounds?: Record<string, Uint8Array>;
 };
 
 /** Tramos del rollo (cada uno es una página). */
@@ -107,7 +109,9 @@ export async function exportRollPdf(layout: RollLayout, background: BackgroundRu
   const fonts: Record<string, PDFFont> = { "Helvetica-Bold": helvetica };
   for (const [name, bytes] of Object.entries(assets.fonts ?? {})) fonts[name] = await doc.embedFont(bytes, { subset: true });
 
-  const bgPage = assets.background ? (await doc.embedPdf(assets.background, [0]))[0] : null;
+  const bgPages: Record<string, PDFEmbeddedPage> = {};
+  for (const [path, bytes] of Object.entries(assets.backgrounds ?? {})) bgPages[path] = (await doc.embedPdf(bytes, [0]))[0];
+  const defaultBg = assets.background ? (await doc.embedPdf(assets.background, [0]))[0] : null;
   const elementPages: Record<string, PDFEmbeddedPage> = {};
   for (const [path, bytes] of Object.entries(assets.elements ?? {})) elementPages[path] = (await doc.embedPdf(bytes, [0]))[0];
 
@@ -128,6 +132,42 @@ export async function exportRollPdf(layout: RollLayout, background: BackgroundRu
       return n;
     };
 
+    // Panel de cuellos: tiras a lo ancho, con la línea divisoria entre ellas.
+    if (seg.collars) {
+      const cp = seg.collars;
+      const x0 = layout.settings.edgeMarginMm;
+      const w = layout.settings.rollWidthMm - 2 * x0;
+      const art = cp.rule.artPath ? elementPages[cp.rule.artPath] : undefined;
+      for (let i = 0; i < cp.strips; i++) {
+        const top = cp.startMm + i * cp.stripHeightMm;
+        const rect = [{ x: x0, y: top }, { x: x0 + w, y: top }, { x: x0 + w, y: top + cp.stripHeightMm }, { x: x0, y: top + cp.stripHeightMm }];
+        const c = hexToRgb(cp.color);
+        page.pushOperators(pushGraphicsState(), cm(rollToPage), ...pathOps(rect), clip(), endPath(), setFillingRgbColor(c.red, c.green, c.blue), ...pathOps(rect), fill());
+        if (art) {
+          // El arte se escala al alto de la tira y se repite a lo largo.
+          const s = cp.stripHeightMm / (art.height / MM);
+          const tileW = (art.width / MM) * s;
+          for (let x = x0; x < x0 + w; x += tileW) {
+            const m = compose(compose(embeddedToCanvas(art), { a: s, b: 0, c: 0, d: s, e: 0, f: 0 }), translate(x, top));
+            page.pushOperators(pushGraphicsState(), cm(m), drawObject(xobj(art)), popGraphicsState());
+          }
+        }
+        page.pushOperators(popGraphicsState());
+      }
+      // Líneas: entre tiras y en los dos bordes del panel, centradas en el corte.
+      const sc = hexToRgb(cp.separatorColor);
+      const t = cp.rule.separatorMm;
+      if (t > 0) {
+        for (let i = 0; i <= cp.strips; i++) {
+          const yy = cp.startMm + i * cp.stripHeightMm;
+          const y1 = Math.max(cp.startMm, yy - t / 2), y2 = Math.min(cp.endMm, yy + t / 2);
+          if (y2 <= y1) continue;
+          const line = [{ x: x0, y: y1 }, { x: x0 + w, y: y1 }, { x: x0 + w, y: y2 }, { x: x0, y: y2 }];
+          page.pushOperators(pushGraphicsState(), cm(rollToPage), setFillingRgbColor(sc.red, sc.green, sc.blue), ...pathOps(line), fill(), popGraphicsState());
+        }
+      }
+    }
+
     for (const idx of seg.pieceIndexes) {
       const placed = layout.placed[idx];
       const { print } = placed;
@@ -136,9 +176,11 @@ export async function exportRollPdf(layout: RollLayout, background: BackgroundRu
       const pieceToPage = compose(pieceToRoll, rollToPage);
 
       // 1. Fondo recortado por la línea de la pieza.
+      const bgPage = print.bgFile ? (bgPages[print.bgFile] ?? (print.bgFile === background.filePath ? defaultBg : null)) : print.bgFile === undefined ? defaultBg : null;
+      const bgColor = print.bgColor !== undefined ? print.bgColor : background.color;
       page.pushOperators(pushGraphicsState(), cm(pieceToPage), ...pathOps(outline), clip(), endPath());
-      if (background.color) {
-        const c = hexToRgb(background.color);
+      if (bgColor) {
+        const c = hexToRgb(bgColor);
         page.pushOperators(setFillingRgbColor(c.red, c.green, c.blue), ...pathOps(outline), fill());
       }
       const clipCanvas = print.backgroundClip;

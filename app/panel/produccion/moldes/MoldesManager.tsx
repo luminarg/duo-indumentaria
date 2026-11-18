@@ -13,7 +13,7 @@ import type { PieceKind, Poly } from "@/lib/produccion/types";
 import { createPatternModel, deletePatternModel, savePatternPieces } from "../actions";
 import { uploadToProduction } from "../upload";
 
-type Model = { id: string; name: string; neck: string | null; base_size_label: string; article_type_id: string | null; active: boolean };
+type Model = { id: string; name: string; neck: string | null; base_size_label: string; article_type_id: string | null; active: boolean; owner_name?: string | null };
 
 const KINDS: { value: PieceKind; label: string }[] = [
   { value: "frente", label: "Frente" },
@@ -72,6 +72,7 @@ export function MoldesManager({
               </Select>
               <Input name="base_size_label" label="Talle base" defaultValue="L" />
             </div>
+            <Input name="owner_name" label="Moldería de un cliente (opcional)" placeholder="Vacío = moldería propia" />
             <Button type="submit" disabled={isPending}>Crear modelo</Button>
           </form>
         </Card>
@@ -86,7 +87,10 @@ export function MoldesManager({
                   onClick={() => setSelected(m.id)}
                   className={`rounded-md px-3 py-2 text-left text-sm ${selected === m.id ? "bg-zinc-900 text-white" : "hover:bg-zinc-100"}`}
                 >
-                  <div className="font-medium">{m.name}</div>
+                  <div className="font-medium">
+                    {m.name}
+                    {m.owner_name && <span className={`ml-2 text-xs font-normal ${selected === m.id ? "text-zinc-300" : "text-amber-700"}`}>de {m.owner_name}</span>}
+                  </div>
                   <div className={`text-xs ${selected === m.id ? "text-zinc-300" : "text-zinc-500"}`}>
                     {sizes.length ? `${sizes.length} talles` : "Sin piezas"} · base {m.base_size_label}
                   </div>
@@ -127,7 +131,17 @@ function ModelDetail({ model, sizes }: { model: Model; sizes: Record<string, str
       const isPdf = f.name.toLowerCase().endsWith(".pdf") || f.type === "application/pdf";
       const res = isPdf ? await importPdf(new Uint8Array(await f.arrayBuffer())) : importSvg(await f.text());
       setRows(res.pieces.map((p, i) => ({ ...p, key: i })));
-      setNotes(res.notes);
+      // ¿Subieron un DISEÑO acá? Un solo juego de piezas, sin talles escritos
+      // y con arte encima (formas ignoradas). El diseño va en el pedido.
+      const sized = res.pieces.filter((p) => p.sizeLabel).length;
+      const ignoredArt = res.notes.some((n) => /ignoraron/i.test(n));
+      const designHint =
+        res.pieces.length > 0 && res.pieces.length <= 6 && sized === 0 && ignoredArt
+          ? [
+              "Esto parece un DISEÑO (un solo talle con arte encima), no una moldería. El diseño se sube en el pedido o trabajo libre, sección «Diseño». Acá va el molde: solo las líneas de las piezas, con el talle escrito debajo de cada grupo.",
+            ]
+          : [];
+      setNotes([...designHint, ...res.notes]);
       if (!res.pieces.length) setError("No se encontraron piezas cerradas en el archivo.");
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));

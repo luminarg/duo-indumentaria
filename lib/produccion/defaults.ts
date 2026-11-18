@@ -68,6 +68,17 @@ export function defaultDesignConfig(): DesignConfig {
       textHeightMm: 6,
       textColor: "#FFFFFF",
     },
+    collars: {
+      enabled: false, // a veces el cuello es tela de color y no se imprime
+      stripHeightMm: 40,
+      necksPerStrip: 3, // 30 remeras → 10 tiras
+      extraStrips: 0,
+      color: null, // = color de fondo del diseño
+      artPath: null,
+      artAspect: 1,
+      separatorMm: 0.5,
+      separatorColor: "auto",
+    },
     safeMarginMm: 10, // relevamiento
   };
 }

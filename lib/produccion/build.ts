@@ -243,6 +243,8 @@ export function buildPrintPieces({ pieces, assembly, design, garments, measure }
         sizeGroup: group,
         backgroundTransform: bgT,
         backgroundClip: bgClip,
+        bgFile: design.background.filePath ?? null,
+        bgColor: design.background.color ?? null,
         elements,
         texts,
         boxes,

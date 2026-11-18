@@ -398,3 +398,75 @@ describe("fuentes subidas", () => {
     expect(names).toMatch(/InterDisplay/);
   });
 });
+
+import { addCollarPanel, collarStripCount } from "./collars";
+
+describe("panel de cuellos", () => {
+  it("30 remeras a 3 por tira = 10 tiras al final del rollo, sin cortar tiras entre tramos", async () => {
+    const design = defaultDesignConfig();
+    design.collars = { ...design.collars, enabled: true };
+    expect(collarStripCount(30, design.collars)).toBe(10);
+    expect(collarStripCount(31, design.collars)).toBe(11);
+    expect(collarStripCount(30, { ...design.collars, enabled: false })).toBe(0);
+
+    const garments: GarmentRequest[] = Array.from({ length: 2 }, (_, i) => ({ orderItemId: `g${i}`, sizeLabel: "M", variant: "jugador" }));
+    const { prints } = buildPrintPieces({ pieces: sampleMolds(), assembly: DEFAULT_ASSEMBLY, design, garments, measure: approxMeasurer });
+    const roll = nest(prints, DEFAULT_SETTINGS);
+    const withCollars = addCollarPanel(roll, design.collars, 30, "#112233");
+    const panel = withCollars.segments.at(-1)!.collars!;
+    expect(panel.strips).toBe(10);
+    expect(panel.startMm).toBeCloseTo(roll.lengthMm + DEFAULT_SETTINGS.gapMm);
+    expect(withCollars.lengthMm).toBeCloseTo(roll.lengthMm + DEFAULT_SETTINGS.gapMm + 400);
+    expect(panel.color).toBe("#112233");
+    expect(panel.separatorColor).toBe(contrastOn("#112233"));
+
+    // 200 tiras de 40 mm = 8 m: se reparte en tramos de hasta 5 m, cortando entre tiras.
+    const big = addCollarPanel(roll, { ...design.collars, necksPerStrip: 1 }, 200, "#112233");
+    const cs = big.segments.filter((s) => s.collars);
+    expect(cs.reduce((a, s) => a + s.collars!.strips, 0)).toBe(200);
+    for (const s of cs) expect(s.endMm - s.startMm).toBeLessThanOrEqual(DEFAULT_SETTINGS.maxSegmentLengthMm);
+
+    const { bytes } = await exportRollPdf(withCollars, design.background);
+    const out = await PDFDocument.load(bytes);
+    const last = out.getPage(out.getPageCount() - 1);
+    expect(last.getHeight() / (72 / 25.4)).toBeCloseTo(400, 0);
+  });
+});
+
+import { groupIntoRolls } from "./rolls";
+
+describe("paños y rollos", () => {
+  it("respeta el largo de paño elegido y reparte paños en rollos sin partirlos", () => {
+    const garments: GarmentRequest[] = Array.from({ length: 12 }, (_, i) => ({ orderItemId: `g${i}`, sizeLabel: "M", variant: "jugador" }));
+    const { prints } = buildPrintPieces({ pieces: sampleMolds(), assembly: DEFAULT_ASSEMBLY, design: defaultDesignConfig(), garments, measure: approxMeasurer });
+    const L = nest(prints, { ...DEFAULT_SETTINGS, maxSegmentLengthMm: 2000 });
+    expect(L.segments.length).toBeGreaterThan(1);
+    for (const s of L.segments) expect(s.endMm - s.startMm).toBeLessThanOrEqual(2000 + 1e-6);
+    const g = groupIntoRolls(L, 4000);
+    expect(g.rolls.reduce((a, r) => a + r.lastPano - r.firstPano + 1, 0)).toBe(L.segments.length);
+    for (const r of g.rolls) expect(r.lengthMm).toBeLessThanOrEqual(4000 + 1e-6);
+    expect(groupIntoRolls(L, 0).rolls).toHaveLength(1);
+  });
+});
+
+import { sizeSheets } from "./sizeSheets";
+
+describe("PDF por talle (trabajos libres)", () => {
+  it("una hoja por talle con un juego de piezas, sin nombre ni número", () => {
+    const garments: GarmentRequest[] = [
+      { orderItemId: "a", sizeLabel: "S", variant: "jugador", name: "Gómez", number: "5" },
+      { orderItemId: "b", sizeLabel: "S", variant: "jugador", name: "Ruiz", number: "9" },
+      { orderItemId: "c", sizeLabel: "L", variant: "jugador", name: "Paz", number: "10" },
+    ];
+    const molds = sampleMolds();
+    const { prints } = buildPrintPieces({ pieces: molds, assembly: DEFAULT_ASSEMBLY, design: defaultDesignConfig(), garments, measure: approxMeasurer });
+    const sheets = sizeSheets(prints);
+    expect(sheets.map((s) => s.size).sort()).toEqual(["L", "S"]);
+    for (const sh of sheets) {
+      const perSize = molds.filter((m) => m.sizeLabel === sh.size).length;
+      expect(sh.layout.placed).toHaveLength(perSize);
+      expect(sh.layout.segments).toHaveLength(1);
+      expect(sh.layout.placed.flatMap((p) => p.print.texts).some((t) => t.kind === "nombre" || t.kind === "numero")).toBe(false);
+    }
+  });
+});

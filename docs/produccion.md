@@ -125,3 +125,11 @@ pasar por una Server Action.
 - El alto configurado es el de las mayúsculas/cifras: el sistema lo respeta con cualquier fuente, y el ancho del nombre se mide con la fuente real (si no entra, se achica).
 - En el PDF del rollo la fuente va embebida (solo los caracteres usados), así que la impresora no necesita tenerla instalada.
 - Si se borra una fuente que usa un diseño guardado, el PDF no se genera hasta elegir otra.
+
+## Cuellos
+
+- Opcional, por diseño ("Cuellos sublimados"): cuando el cuello es tela de color, se deja apagado.
+- Van al final del rollo, separados de las piezas por la misma separación de 6 mm: tiras de 4 cm a todo el ancho útil, pegadas una abajo de otra, con una línea fina que contrasta entre cada una. No llevan marcas de largo: la costurera corta a demanda.
+- Cantidad de tiras = prendas ÷ cuellos por tira (por defecto 3: 30 remeras → 10 tiras), redondeado para arriba, más las "tiras de más" que se pidan.
+- Color: el de la tira o, si se deja vacío, el color de fondo del diseño. Se puede subir un PDF (rayas, textura) que se repite a lo largo de la tira, a su alto.
+- Si el panel es más largo que un tramo, sigue en el próximo cortando siempre entre tiras.

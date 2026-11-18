@@ -26,12 +26,12 @@ export default async function ProduccionPedidoPage({ params }: { params: Promise
       supabase.from("pattern_models").select("id, name, neck, base_size_label, article_type_id").eq("active", true).order("name"),
       supabase
         .from("order_designs")
-        .select("id, requirement_id, model_id, variant, version, config, created_at")
+        .select("id, requirement_id, component_id, model_id, variant, version, config, created_at")
         .eq("order_id", id)
         .order("version", { ascending: false }),
       supabase
         .from("production_layouts")
-        .select("id, linear_meters, piece_count, pdf_path, created_at")
+        .select("id, linear_meters, piece_count, pdf_path, created_at, requirement_id, component_id, variant")
         .eq("order_id", id)
         .order("created_at", { ascending: false }),
     ]);
@@ -48,6 +48,14 @@ export default async function ProduccionPedidoPage({ params }: { params: Promise
         supabase.from("model_assembly").select("model_id, kind, align_mode, align_to_kind, offset_x, offset_y").in("model_id", modelIds),
       ])
     : [{ data: [] }, { data: [] }];
+
+  const typeIds = [...new Set((requirements ?? []).map((r) => r.article_type_id).filter(Boolean))] as string[];
+  const { data: components } = typeIds.length
+    ? await supabase
+        .from("article_type_components")
+        .select("id, article_type_id, name, model_id, copy_number, copy_name, sort_order")
+        .in("article_type_id", typeIds)
+    : { data: [] };
 
   const sizeLabels = Object.fromEntries((sizes ?? []).map((s) => [s.id, s.label]));
 
@@ -76,6 +84,7 @@ export default async function ProduccionPedidoPage({ params }: { params: Promise
         assembly={(assembly ?? []) as (AssemblyRow & { model_id: string })[]}
         designs={designs ?? []}
         layouts={layouts ?? []}
+        components={components ?? []}
       />
     </div>
   );

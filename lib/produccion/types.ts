@@ -183,6 +183,42 @@ export type BackgroundRule = {
   color?: string | null;
 };
 
+/**
+ * Panel de cuellos: tiras sublimadas a lo ancho del rollo, una abajo de otra,
+ * separadas por una línea fina que contrasta. Sin marcas de largo: la
+ * costurera corta a demanda.
+ */
+export type CollarRule = {
+  enabled: boolean;
+  /** Alto de cada tira. */
+  stripHeightMm: number;
+  /** Cuántos cuellos salen de una tira (30 remeras y 3 por tira = 10 tiras). */
+  necksPerStrip: number;
+  /** Tiras de más, por si hay que rehacer alguno. */
+  extraStrips: number;
+  /** Color liso de la tira; vacío = el color de fondo del diseño. */
+  color?: string | null;
+  /** PDF opcional (rayas, textura) que se repite a lo largo de la tira, a su alto. */
+  artPath?: string | null;
+  artAspect: number;
+  /** Línea divisoria entre tiras, para cortar a mano. */
+  separatorMm: number;
+  /** "auto" = contrasta con el color de la tira. */
+  separatorColor: string;
+};
+
+/** Panel de cuellos ya ubicado en el rollo. */
+export type CollarPanel = {
+  startMm: number;
+  endMm: number;
+  strips: number;
+  stripHeightMm: number;
+  rule: CollarRule;
+  /** Color efectivo de la tira y de la línea. */
+  color: string;
+  separatorColor: string;
+};
+
 export type DesignConfig = {
   baseSizeLabel: string;
   background: BackgroundRule;
@@ -191,6 +227,7 @@ export type DesignConfig = {
   name: NameRule;
   sizeTag: SizeTagRule;
   sizeIndicator: SizeIndicatorRule;
+  collars: CollarRule;
   /** Ningún elemento importante a menos de esto del contorno. */
   safeMarginMm: number;
 };
@@ -253,6 +290,9 @@ export type PrintPiece = {
   backgroundTransform: Affine;
   /** Recorte extra del arte, en coordenadas del lienzo (modo "piezas": la pieza del diseño). */
   backgroundClip?: Poly | null;
+  /** Archivo y color del fondo de ESTA pieza (en un rollo combinado cada prenda trae su diseño). */
+  bgFile?: string | null;
+  bgColor?: string | null;
   elements: PlacedElement[];
   texts: PlacedText[];
   /** Indicador de talle: arte subido o cuadrado con borde. */
@@ -272,7 +312,7 @@ export type PlacedPiece = {
 };
 
 /** Tramo del rollo = una página del PDF. */
-export type Segment = { startMm: number; endMm: number; pieceIndexes: number[] };
+export type Segment = { startMm: number; endMm: number; pieceIndexes: number[]; collars?: CollarPanel };
 
 export type RollLayout = {
   settings: ProductionSettings;
@@ -280,3 +320,4 @@ export type RollLayout = {
   segments: Segment[];
   lengthMm: number;
 };
+

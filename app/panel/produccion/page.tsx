@@ -39,9 +39,14 @@ export default async function ProduccionPage() {
         title="Producción"
         description="Diseño sobre moldería, escalado de talles y rollo listo para imprimir y cortar."
         action={
-          <Link href="/panel/produccion/moldes" className="rounded-md border border-zinc-300 bg-white px-4 py-2.5 text-sm font-medium text-zinc-900 hover:bg-zinc-50">
-            Moldería
-          </Link>
+          <div className="flex gap-2">
+            <Link href="/panel/produccion/trabajos" className="rounded-md border border-zinc-300 bg-white px-4 py-2.5 text-sm font-medium text-zinc-900 hover:bg-zinc-50">
+              Trabajos libres
+            </Link>
+            <Link href="/panel/produccion/moldes" className="rounded-md border border-zinc-300 bg-white px-4 py-2.5 text-sm font-medium text-zinc-900 hover:bg-zinc-50">
+              Moldería
+            </Link>
+          </div>
         }
       />
       <Section title="En diseño en moldería" rows={active} lastLayout={lastLayout} empty="No hay pedidos en diseño en moldería." />

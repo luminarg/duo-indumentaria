@@ -84,6 +84,7 @@ export async function signedProductionUrls(paths: string[]): Promise<Record<stri
 export async function saveDesign(input: {
   orderId: string;
   requirementId: string | null;
+  componentId?: string | null;
   modelId: string | null;
   variant: "jugador" | "arquero";
   config: DesignConfig;
@@ -98,11 +99,13 @@ export async function saveDesign(input: {
     .order("version", { ascending: false })
     .limit(1);
   q = input.requirementId ? q.eq("requirement_id", input.requirementId) : q.is("requirement_id", null);
+  q = input.componentId ? q.eq("component_id", input.componentId) : q.is("component_id", null);
   const { data: last } = await q;
   const version = (last?.[0]?.version ?? 0) + 1;
   const { error } = await supabase.from("order_designs").insert({
     order_id: input.orderId,
     requirement_id: input.requirementId,
+    component_id: input.componentId ?? null,
     model_id: input.modelId,
     variant: input.variant,
     version,
@@ -121,6 +124,9 @@ export async function saveLayout(input: {
   lengthMm: number;
   pieceCount: number;
   advanceStatus: boolean;
+  requirementId?: string | null;
+  componentId?: string | null;
+  variant?: string | null;
 }) {
   const user = await requireTeamMember();
   if (!input.orderId || !input.pdfPath || !Number.isFinite(input.lengthMm)) throw new Error("Faltan datos de la tizada");
@@ -131,6 +137,9 @@ export async function saveLayout(input: {
     length_mm: input.lengthMm,
     piece_count: input.pieceCount,
     pdf_path: input.pdfPath,
+    requirement_id: input.requirementId ?? null,
+    component_id: input.componentId ?? null,
+    variant: input.variant ?? null,
     created_by: user.id,
   });
   if (error) throw new Error("No se pudo registrar la tizada: " + error.message);
@@ -156,11 +165,12 @@ export async function createPatternModel(formData: FormData) {
   const name = String(formData.get("name") || "").trim();
   const articleTypeId = String(formData.get("article_type_id") || "") || null;
   const neck = String(formData.get("neck") || "").trim() || null;
+  const ownerName = String(formData.get("owner_name") || "").trim() || null;
   const baseSize = String(formData.get("base_size_label") || "L").trim() || "L";
   if (!name) throw new Error("Falta el nombre del modelo");
   const { data, error } = await supabase
     .from("pattern_models")
-    .insert({ name, article_type_id: articleTypeId, neck, base_size_label: baseSize })
+    .insert({ name, article_type_id: articleTypeId, neck, base_size_label: baseSize, owner_name: ownerName })
     .select("id")
     .single();
   if (error) throw new Error("No se pudo crear el modelo: " + error.message);
@@ -215,4 +225,117 @@ export async function deletePatternModel(modelId: string) {
   const { error } = await supabase.from("pattern_models").delete().eq("id", modelId);
   if (error) throw new Error("No se pudo borrar el modelo: " + error.message);
   revalidatePath("/panel/produccion/moldes");
+}
+
+export type ArticleComponentInput = { name: string; model_id: string | null; copy_number: boolean; copy_name: boolean };
+
+/**
+ * Prendas que componen un artículo (combo). Reemplaza la lista entera; las
+ * prendas que siguen se actualizan (así no se pierden los diseños ya hechos).
+ */
+export async function saveArticleComponents(articleTypeId: string, list: (ArticleComponentInput & { id?: string })[]) {
+  await requireTeamMember();
+  if (!articleTypeId) throw new Error("Falta el artículo");
+  const clean = list.map((c, i) => ({ ...c, name: c.name.trim(), sort_order: i })).filter((c) => c.name);
+  const supabase = await createClient();
+  const { data: current, error: e1 } = await supabase.from("article_type_components").select("id").eq("article_type_id", articleTypeId);
+  if (e1) throw new Error("No se pudieron leer las prendas: " + e1.message);
+  const keep = new Set(clean.map((c) => c.id).filter(Boolean));
+  const remove = (current ?? []).map((c) => c.id).filter((id) => !keep.has(id));
+  if (remove.length) {
+    const { error } = await supabase.from("article_type_components").delete().in("id", remove);
+    if (error) throw new Error("No se pudieron quitar prendas: " + error.message);
+  }
+  for (const c of clean) {
+    const row = { article_type_id: articleTypeId, name: c.name, model_id: c.model_id || null, copy_number: c.copy_number, copy_name: c.copy_name, sort_order: c.sort_order };
+    const { error } = c.id
+      ? await supabase.from("article_type_components").update(row).eq("id", c.id)
+      : await supabase.from("article_type_components").insert(row);
+    if (error) throw new Error("No se pudo guardar la prenda " + c.name + ": " + error.message);
+  }
+  revalidatePath("/panel/produccion/moldes");
+}
+
+// ── Trabajos libres (escalado para terceros) ───────────────────────────────
+
+export type JobItem = { size: string; qty: number; name?: string | null; number?: string | null; variant?: "jugador" | "arquero" };
+
+export async function createJob(formData: FormData) {
+  const user = await requireTeamMember();
+  const clientName = String(formData.get("client_name") || "").trim();
+  if (!clientName) throw new Error("Falta el nombre del cliente");
+  const notes = String(formData.get("notes") || "").trim() || null;
+  const supabase = await createClient();
+  const { data, error } = await supabase
+    .from("production_jobs")
+    .insert({ client_name: clientName, notes, created_by: user.id })
+    .select("id")
+    .single();
+  if (error) throw new Error("No se pudo crear el trabajo: " + error.message);
+  revalidatePath("/panel/produccion/trabajos");
+  return { id: data.id as string };
+}
+
+export async function saveJob(input: {
+  id: string;
+  clientName?: string;
+  notes?: string | null;
+  modelId?: string | null;
+  items?: JobItem[];
+  /** Diseño de una variante: se guarda junto a los de las otras variantes. */
+  design?: { variant: "jugador" | "arquero"; config: DesignConfig };
+}) {
+  await requireTeamMember();
+  const patch: Record<string, unknown> = { updated_at: new Date().toISOString() };
+  if (input.clientName !== undefined) {
+    if (!input.clientName.trim()) throw new Error("Falta el nombre del cliente");
+    patch.client_name = input.clientName.trim();
+  }
+  if (input.notes !== undefined) patch.notes = input.notes;
+  if (input.modelId !== undefined) patch.model_id = input.modelId;
+  if (input.items !== undefined) {
+    patch.items = input.items
+      .map((i) => ({
+        size: String(i.size ?? "").trim(),
+        qty: Math.max(1, Math.floor(Number(i.qty) || 1)),
+        name: i.name?.trim() || null,
+        number: i.number?.toString().trim() || null,
+        variant: i.variant === "arquero" ? "arquero" : "jugador",
+      }))
+      .filter((i) => i.size);
+  }
+  const supabase = await createClient();
+  if (input.design !== undefined) {
+    const { data: cur } = await supabase.from("production_jobs").select("design").eq("id", input.id).single();
+    const prev = cur?.design && typeof cur.design === "object" ? (cur.design as Record<string, unknown>) : {};
+    patch.design = { ...prev, [input.design.variant]: input.design.config };
+  }
+  const { error } = await supabase.from("production_jobs").update(patch).eq("id", input.id);
+  if (error) throw new Error("No se pudo guardar el trabajo: " + error.message);
+  revalidatePath(`/panel/produccion/trabajos/${input.id}`);
+}
+
+export async function deleteJob(id: string) {
+  await requireTeamMember();
+  const supabase = await createClient();
+  const { error } = await supabase.from("production_jobs").delete().eq("id", id);
+  if (error) throw new Error("No se pudo borrar el trabajo: " + error.message);
+  revalidatePath("/panel/produccion/trabajos");
+}
+
+export async function saveJobLayout(input: { jobId: string; pdfPath: string; lengthMm: number; pieceCount: number }) {
+  const user = await requireTeamMember();
+  if (!input.jobId || !input.pdfPath || !Number.isFinite(input.lengthMm)) throw new Error("Faltan datos del rollo");
+  const supabase = await createClient();
+  const { error } = await supabase.from("production_layouts").insert({
+    job_id: input.jobId,
+    order_id: null,
+    order_ids: [],
+    length_mm: input.lengthMm,
+    piece_count: input.pieceCount,
+    pdf_path: input.pdfPath,
+    created_by: user.id,
+  });
+  if (error) throw new Error("No se pudo registrar el rollo: " + error.message);
+  revalidatePath(`/panel/produccion/trabajos/${input.jobId}`);
 }
