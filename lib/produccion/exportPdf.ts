@@ -26,10 +26,9 @@ import {
   stroke,
   drawObject,
 } from "pdf-lib";
-import { apply as applyAffine, bbox, compose, offset, translate } from "./geometry";
+import { bbox, compose, offset, translate } from "./geometry";
 import { placementTransform } from "./nesting";
 import { embedAsGroup, embedSrgbProfile, markTransparencyGroup } from "./colorProfile";
-import { inlineArtOperator, parseEmbeddedArt, type ParsedArt } from "./inlineArt";
 import type { MockupLayout } from "./mockup";
 import type { TextMeasurer } from "./build";
 import type { Affine, BackgroundRule, PlacedText, Poly, PrintPiece, RollLayout, Segment } from "./types";
@@ -133,35 +132,6 @@ async function createPainter(doc: PDFDocument, background: BackgroundRule, asset
   for (const [path, bytes] of Object.entries(assets.elements ?? {})) elementPages[path] = await embedAsGroup(doc, bytes);
 
 
-  // El arte va copiado dentro de cada página (no como objeto reutilizable):
-  // así Corel respeta las transparencias y cada pieza lleva solo su zona.
-  const parsed = new Map<PDFEmbeddedPage, ParsedArt | null>();
-  for (const e of [...Object.values(bgPages), ...Object.values(elementPages), ...(defaultBg ? [defaultBg] : [])])
-    if (!parsed.has(e)) parsed.set(e, await parseEmbeddedArt(doc, e));
-  const inv = (m: Affine): Affine => {
-    const det = m.a * m.d - m.b * m.c;
-    const a = m.d / det, b = -m.b / det, c = -m.c / det, d = m.a / det;
-    return { a, b, c, d, e: -(a * m.e + c * m.f), f: -(b * m.e + d * m.f) };
-  };
-  /**
-   * Dibuja el arte embebido. `canvasRegion` (mm del lienzo) limita los trazos
-   * a esa zona; `hole`, a lo que queda afuera de ella (tapado por otra copia).
-   */
-  const art = (page: PDFPage, emb: PDFEmbeddedPage, canvasRegion: Poly | null, hole: Poly | null = null) => {
-    const p = parsed.get(emb);
-    if (!p) return drawObject(xobjFor(page)(emb));
-    if (!canvasRegion) return inlineArtOperator(page, p, null);
-    const toPt = inv(embeddedToCanvas(emb));
-    // Margen mayor que un punto del semitono: nada visible queda afuera.
-    const grown = offset(canvasRegion, 8) ?? canvasRegion;
-    return inlineArtOperator(page, p, {
-      poly: grown.map((q) => applyAffine(toPt, q)),
-      hole: hole ? hole.map((q) => applyAffine(toPt, q)) : null,
-    });
-  };
-
-  const art_ = (page: PDFPage, emb: PDFEmbeddedPage) => art(page, emb, null);
-
   const xobjNames = new WeakMap<PDFPage, Map<PDFEmbeddedPage, PDFName>>();
   const xobjFor = (page: PDFPage) => (p: PDFEmbeddedPage): PDFName => {
     let m = xobjNames.get(page);
@@ -181,6 +151,7 @@ async function createPainter(doc: PDFDocument, background: BackgroundRule, asset
    * puede ser cualquier transformación (en el mockup las mangas van giradas).
    */
   function drawPiece(page: PDFPage, print: PrintPiece, pieceToPage: Affine, opts: { skipTextKinds?: PlacedText["kind"][] } = {}) {
+    const xobj = xobjFor(page);
     const outline = print.piece.outline;
     // 1. Fondo recortado por la línea de la pieza.
     const bgPage = print.bgFile ? (bgPages[print.bgFile] ?? (print.bgFile === background.filePath ? defaultBg : null)) : print.bgFile === undefined ? defaultBg : null;
@@ -204,17 +175,11 @@ async function createPainter(doc: PDFDocument, background: BackgroundRule, asset
         const k = 1.06;
         const grow: Affine = { a: k, b: 0, c: 0, d: k, e: c.x * (1 - k), f: c.y * (1 - k) };
         page.pushOperators(pushGraphicsState(), cm(grow), cm(print.backgroundTransform), ...pathOps(clipCanvas), clip(), endPath());
-        // Lo de adentro lo tapa el arte de arriba: va solo el borde.
-        const cb = bbox(clipCanvas);
-        const inset = (k - 1) * Math.max(cb.maxX - cb.minX, cb.maxY - cb.minY) + 10;
-        page.pushOperators(cm(embeddedToCanvas(bgPage)), art(page, bgPage, clipCanvas, offset(clipCanvas, -inset)), popGraphicsState());
+        page.pushOperators(cm(embeddedToCanvas(bgPage)), drawObject(xobj(bgPage)), popGraphicsState());
       }
-      // Zona visible del lienzo: la pieza del diseño, o la línea de la pieza
-      // llevada al lienzo (agrandada por el sangrado de abajo).
-      const visible = clipCanvas && clipCanvas.length > 2 ? clipCanvas : outline.map((q) => applyAffine(inv(print.backgroundTransform), q));
       page.pushOperators(pushGraphicsState(), cm(print.backgroundTransform));
       if (clipCanvas && clipCanvas.length > 2) page.pushOperators(...pathOps(clipCanvas), clip(), endPath());
-      page.pushOperators(cm(embeddedToCanvas(bgPage)), art(page, bgPage, visible), popGraphicsState());
+      page.pushOperators(cm(embeddedToCanvas(bgPage)), drawObject(xobj(bgPage)), popGraphicsState());
     }
 
     // 2. Elementos anclados (escudo, sponsors), también recortados.
@@ -226,7 +191,7 @@ async function createPainter(doc: PDFDocument, background: BackgroundRule, asset
         compose(embeddedToCanvas(art), { a: s, b: 0, c: 0, d: s, e: 0, f: 0 }),
         translate(el.center.x - el.widthMm / 2, el.center.y - el.heightMm / 2)
       );
-      page.pushOperators(pushGraphicsState(), cm(m), art_(page, art), popGraphicsState());
+      page.pushOperators(pushGraphicsState(), cm(m), drawObject(xobj(art)), popGraphicsState());
     }
     page.pushOperators(popGraphicsState());
 
@@ -239,7 +204,7 @@ async function createPainter(doc: PDFDocument, background: BackgroundRule, asset
           compose(embeddedToCanvas(art), { a: s, b: 0, c: 0, d: s, e: 0, f: 0 }),
           translate(bx.center.x - bx.widthMm / 2, bx.center.y - bx.heightMm / 2)
         );
-        page.pushOperators(pushGraphicsState(), cm(pieceToPage), cm(m), art_(page, art), popGraphicsState());
+        page.pushOperators(pushGraphicsState(), cm(pieceToPage), cm(m), drawObject(xobj(art)), popGraphicsState());
         continue;
       }
       if (!bx.strokeMm) continue;
