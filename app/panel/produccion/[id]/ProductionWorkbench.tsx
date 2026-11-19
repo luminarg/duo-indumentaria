@@ -8,7 +8,7 @@ import { Button } from "../../../components/ui/Button";
 import { Input, Select } from "../../../components/ui/Input";
 import { approxMeasurer, buildPrintPieces, type TextMeasurer } from "@/lib/produccion/build";
 import { assemblyFromRows, garmentsFromItems, normalizeConfig, pieceFromRow, type AssemblyRow, type OrderItemRow, type PatternPieceRow } from "@/lib/produccion/db";
-import { capHeightRatio, exportMockupPdf, exportRollPdf, pdfMeasurer } from "@/lib/produccion/exportPdf";
+import { capHeightRatio, exportMockupPdf, exportPiecePages, exportRollPdf, pdfMeasurer } from "@/lib/produccion/exportPdf";
 import { cssFamilyFor, usedFonts, type FontEntry } from "@/lib/produccion/fonts";
 import { addCollarPanel, collarStripCount } from "@/lib/produccion/collars";
 import { groupIntoRolls } from "@/lib/produccion/rolls";
@@ -20,7 +20,10 @@ import { templateFromFile } from "@/lib/produccion/templateImport";
 import { normalizeSize } from "@/lib/produccion/rules";
 import { TemplateEditor } from "./TemplateEditor";
 import { mockupLayout } from "@/lib/produccion/mockup";
-import { pdfToPngBlob } from "@/lib/produccion/pdfRaster";
+import { pdfPagesToCanvases, pdfToPngBlob } from "@/lib/produccion/pdfRaster";
+import { joinViews, renderPhotoView, type PieceRaster } from "@/lib/produccion/photoMockup";
+import { bbox as polyBox } from "@/lib/produccion/geometry";
+import { shoulderTop } from "@/lib/produccion/rules";
 import { uploadOrderResource } from "../../pedidos/actions";
 import { pdfPrimitives } from "@/lib/produccion/pdfImport";
 import { detectDesignPieces } from "@/lib/produccion/designDetect";
@@ -480,16 +483,46 @@ export function ProductionWorkbench(props: {
 
   // Mockup plano (frente y espalda) de una prenda del pedido.
   const [mockGarment, setMockGarment] = useState<string>("");
-  const [mockup, setMockup] = useState<{ png: Blob; url: string; pdf: Uint8Array; name: string } | null>(null);
+  const [mockup, setMockup] = useState<{ png: Blob; url: string; pdf: Uint8Array | null; name: string } | null>(null);
+  const [mockStyle, setMockStyle] = useState<"foto" | "plano">("foto");
+  const [trimOn, setTrimOn] = useState(false);
+  const [trimColor, setTrimColor] = useState("#C9A646");
   const onMockup = () =>
     run("Armando el mockup…", async () => {
       const g = garments.find((x) => x.orderItemId === mockGarment) ?? garments[0];
       if (!g) throw new Error("No hay prendas para mostrar.");
       const one = buildPrintPieces({ pieces, assembly, design: designConfig, garments: [g], measure }).prints;
       if (!one.some((p) => p.piece.kind === "frente")) throw new Error("El molde no tiene frente en ese talle.");
-      const m = mockupLayout(one);
-      const pdf = await exportMockupPdf(m, designConfig.background, await collectExportAssets(), { title: `Mockup ${g.name ?? ""} ${g.number ?? ""}`.trim() });
-      const png = await pdfToPngBlob(pdf, 2400);
+      const exportAssets = await collectExportAssets();
+      let png: Blob;
+      let pdf: Uint8Array | null = null;
+      if (mockStyle === "foto") {
+        // Foto: cada pieza con su arte → sobre la plantilla de remera (frente y espalda).
+        const MARGIN = 60, PPM = 4;
+        const pagesPdf = await exportPiecePages(one, designConfig.background, exportAssets, { marginMm: MARGIN });
+        const canvases = await pdfPagesToCanvases(pagesPdf, PPM / (72 / 25.4));
+        const rasters: PieceRaster[] = one.map((p, i) => {
+          const b = polyBox(p.piece.outline);
+          return {
+            kind: p.piece.kind,
+            image: canvases[i],
+            pxPerMm: PPM,
+            originMm: { x: b.minX - MARGIN, y: b.minY - MARGIN },
+            outline: p.piece.outline,
+            top: shoulderTop(p.piece),
+            bgColor: p.bgColor ?? designConfig.background.color ?? "#FFFFFF",
+          };
+        });
+        const opts = { trimColor: trimOn ? trimColor : null, cuffColor: trimOn ? trimColor : null };
+        const front = await renderPhotoView("/mockups/remera/frente", rasters, opts);
+        const back = await renderPhotoView("/mockups/remera/espalda", rasters, opts);
+        const joined = joinViews([front, back], { crop: [300, 170, 1420, 1700] });
+        png = await new Promise<Blob>((res, rej) => joined.toBlob((b) => (b ? res(b) : rej(new Error("No se pudo generar la imagen"))), "image/png"));
+      } else {
+        const m = mockupLayout(one);
+        pdf = await exportMockupPdf(m, designConfig.background, exportAssets, { title: `Mockup ${g.name ?? ""} ${g.number ?? ""}`.trim() });
+        png = await pdfToPngBlob(pdf, 2400);
+      }
       if (mockup) URL.revokeObjectURL(mockup.url);
       const name = `mockup-${orderId.slice(0, 8)}-${g.sizeLabel}${g.number ? "-" + g.number : ""}`;
       setMockup({ png, url: URL.createObjectURL(png), pdf, name });
@@ -709,6 +742,19 @@ export function ProductionWorkbench(props: {
                   ))}
                 </Select>
               </div>
+              <div className="w-40">
+                <Select label="Estilo" value={mockStyle} onChange={(e) => setMockStyle(e.target.value as "foto" | "plano")}>
+                  <option value="foto">Foto (remera)</option>
+                  <option value="plano">Plano (piezas armadas)</option>
+                </Select>
+              </div>
+              {mockStyle === "foto" && (
+                <label className="flex items-center gap-2 pb-2 text-sm text-zinc-700">
+                  <input type="checkbox" checked={trimOn} onChange={(e) => setTrimOn(e.target.checked)} />
+                  Cuello y puños de color
+                  {trimOn && <input type="color" value={trimColor} onChange={(e) => setTrimColor(e.target.value.toUpperCase())} className="h-7 w-10 rounded border border-zinc-300" />}
+                </label>
+              )}
               <Button variant="secondary" onClick={onMockup} disabled={!!busy || !garments.length || modelId === SAMPLE}>
                 Generar mockup
               </Button>
@@ -719,16 +765,21 @@ export function ProductionWorkbench(props: {
                 <img src={mockup.url} alt="Mockup de la prenda" className="w-full rounded border border-zinc-200" />
                 <div className="flex flex-wrap gap-2">
                   <Button variant="secondary" onClick={() => saveBlob(mockup.png, `${mockup.name}.png`)}>Descargar PNG</Button>
-                  <Button variant="secondary" onClick={() => saveBlob(new Blob([mockup.pdf as BlobPart], { type: "application/pdf" }), `${mockup.name}.pdf`)}>
-                    Descargar PDF
-                  </Button>
+                  {mockup.pdf && (
+                    <Button variant="secondary" onClick={() => saveBlob(new Blob([mockup.pdf as BlobPart], { type: "application/pdf" }), `${mockup.name}.pdf`)}>
+                      Descargar PDF
+                    </Button>
+                  )}
                   {!job && (
                     <Button onClick={onSaveMockup} disabled={!!busy}>
                       Guardar en el pedido
                     </Button>
                   )}
                 </div>
-                <p className="text-xs text-zinc-500">Es la misma prenda que va al rollo (mismo arte, número y nombre), vista armada. Las mangas se muestran por la mitad, como apoyada en la mesa.</p>
+                <p className="text-xs text-zinc-500">
+                  Es la misma prenda que va al rollo (mismo arte, número y nombre).
+                  {mockStyle === "foto" ? " Foto de remera: mockup de TroutGraph (uso comercial permitido; agradecen el crédito)." : " Vista plana: las mangas se muestran por la mitad, como apoyada en la mesa."}
+                </p>
               </div>
             )}
           </Card>

@@ -1,0 +1,11 @@
+{
+  "credit": "Mockup: TroutGraph (troutgraph.gumroad.com)",
+  "garment": "Color Base",
+  "smart": [
+    {"layer": "Smart - Front + Back", "kind": "frente", "fit": "body", "scale": 0.5},
+    {"layer": "Smart - R Arm", "kind": "manga_izq", "fit": "sleeve", "side": "min_to_cap"},
+    {"layer": "Smart - L Arm", "kind": "manga_der", "fit": "sleeve", "side": "cap_to_max"}
+  ],
+  "trims": {"cuello": ["Color Neck", "Color Back"], "punos": ["Color Left Handcuff", "Color Right Handcuff"]},
+  "textures": [["Render 2", "multiply"], ["Render 1", "hard-light"], ["light3", "overlay"], ["light2", "overlay"], ["light", "overlay"]]
+}

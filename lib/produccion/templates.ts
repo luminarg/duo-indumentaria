@@ -283,7 +283,9 @@ export const BUILTIN_TEMPLATES: TemplateDef[] = [
       if (bool(p, "espalda", true) && cv.anchors.espalda) centers.push(cv.anchors.espalda);
       for (const a of centers) {
         const y0 = a.top + num(p, "altura", 260);
-        const L = a.width / 2 + 40; // hasta pasar apenas el costado (el recorte corta el resto)
+        // Brazos hasta el costado de ESTA pieza: si pasan, se meten en la pieza
+        // de al lado del lienzo (el frente y la espalda están pegados).
+        const L = a.width / 2;
         for (let i = 0; i < n; i++) {
           const dy = i * (t + gap) * (down ? 1 : -1);
           const s = down ? -1 : 1; // los brazos suben (punta abajo) o bajan

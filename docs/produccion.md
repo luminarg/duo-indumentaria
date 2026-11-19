@@ -159,3 +159,10 @@ pasar por una Server Action.
 - En el pedido, "Mockup (frente y espalda)": se elige una prenda (talle, nombre, número) y se genera la prenda armada con el mismo arte del rollo. Las mangas se muestran por la mitad, como apoyada en la mesa.
 - Se descarga en PNG (para WhatsApp/mail) o PDF vectorial, y se puede guardar en los recursos del pedido como "mockup".
 - La imagen se genera en el navegador con pdf.js (`public/pdf.worker.min.mjs`, misma versión que `pdfjs-dist`: si se actualiza el paquete, copiar el worker de `node_modules/pdfjs-dist/build/`).
+
+## Mockup fotográfico
+
+- En "Mockup", estilo **Foto (remera)**: el arte real de cada pieza (el mismo del rollo) se deforma sobre una foto de remera, con las sombras y brillos de la tela. Frente y espalda, opcional cuello y puños de color. Se genera en el navegador en 1–2 s.
+- Plantillas en `public/mockups/remera/{frente,espalda}` (mockup gratuito de TroutGraph, uso comercial permitido; el autor pide crédito).
+- Para sumar otra plantilla (otro PSD de mockup con objetos inteligentes): `herramientas/mockups/build_template.py <psd> <salida> <spec.json>` (requiere `pip install psd-tools`). El script evalúa la deformación de Photoshop (quilt/envelope warp + perspectiva) y la guarda como malla; ver `spec_remera_frente.json` de ejemplo.
+- El short tiene plantilla disponible (mismo autor) y se suma cuando esté su moldería.

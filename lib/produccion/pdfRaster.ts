@@ -22,3 +22,27 @@ export async function pdfToPngBlob(bytes: Uint8Array, maxPx = 2400): Promise<Blo
     await doc.destroy();
   }
 }
+
+/** Todas las páginas de un PDF como canvas, a `pxPerPt` píxeles por punto. */
+export async function pdfPagesToCanvases(bytes: Uint8Array, pxPerPt: number): Promise<HTMLCanvasElement[]> {
+  const pdfjs = await import("pdfjs-dist");
+  pdfjs.GlobalWorkerOptions.workerSrc = "/pdf.worker.min.mjs";
+  const doc = await pdfjs.getDocument({ data: bytes.slice() }).promise;
+  try {
+    const out: HTMLCanvasElement[] = [];
+    for (let i = 1; i <= doc.numPages; i++) {
+      const page = await doc.getPage(i);
+      const viewport = page.getViewport({ scale: pxPerPt });
+      const canvas = document.createElement("canvas");
+      canvas.width = Math.round(viewport.width);
+      canvas.height = Math.round(viewport.height);
+      const ctx = canvas.getContext("2d");
+      if (!ctx) throw new Error("El navegador no permite dibujar la imagen");
+      await page.render({ canvas, canvasContext: ctx, viewport }).promise;
+      out.push(canvas);
+    }
+    return out;
+  } finally {
+    await doc.destroy();
+  }
+}

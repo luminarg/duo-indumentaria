@@ -26,7 +26,7 @@ import {
   stroke,
   drawObject,
 } from "pdf-lib";
-import { bbox, compose, translate } from "./geometry";
+import { bbox, compose, offset, translate } from "./geometry";
 import { placementTransform } from "./nesting";
 import type { MockupLayout } from "./mockup";
 import type { TextMeasurer } from "./build";
@@ -390,4 +390,36 @@ export async function exportMockupPdf(mock: MockupLayout, background: Background
 function invertAffine(m: Affine): Affine {
   const det = m.a * m.d - m.b * m.c;
   return { a: m.d / det, b: -m.b / det, c: -m.c / det, d: m.a / det, e: (m.c * m.f - m.d * m.e) / det, f: (m.b * m.e - m.a * m.f) / det };
+}
+
+/**
+ * Una página por pieza (del tamaño de la pieza + margen), con el arte
+ * "sangrado" hacia afuera de la línea: lo usa el mockup fotográfico, que
+ * necesita arte un poco más allá del borde para cubrir hombros y costados.
+ */
+export async function exportPiecePages(prints: PrintPiece[], background: BackgroundRule, assets: ExportAssets = {}, opts: { marginMm?: number; bleed?: number } = {}) {
+  const doc = await PDFDocument.create();
+  const painter = await createPainter(doc, background, assets);
+  const margin = opts.marginMm ?? 60;
+  const k = opts.bleed ?? 1.18;
+  for (const print of prints) {
+    const b = bbox(print.piece.outline);
+    const w = b.maxX - b.minX + 2 * margin;
+    const h = b.maxY - b.minY + 2 * margin;
+    const page = doc.addPage([w * MM, h * MM]);
+    const toPage: Affine = { a: MM, b: 0, c: 0, d: -MM, e: (margin - b.minX) * MM, f: (h - margin + b.minY) * MM };
+    const c = { x: (b.minX + b.maxX) / 2, y: (b.minY + b.maxY) / 2 };
+    // Fondo de la página del color de la pieza (fuera de la línea no queda blanco).
+    const bgc = hexToRgb(print.bgColor ?? background.color ?? "#FFFFFF");
+    page.pushOperators(setFillingRgbColor(bgc.red, bgc.green, bgc.blue), ...pathOps([{ x: 0, y: 0 }, { x: w * MM, y: 0 }, { x: w * MM, y: h * MM }, { x: 0, y: h * MM }]), fill());
+    // Debajo: el mismo arte recortado por la línea agrandada 10 mm (sangrado
+    // corto: tapa el borde sin traer arte de las piezas vecinas). Más afuera,
+    // el color de fondo de la pieza.
+    void c;
+    void k;
+    const grown = offset(print.piece.outline, Math.min(10, margin));
+    if (grown) painter.drawPiece(page, { ...print, piece: { ...print.piece, outline: grown } }, toPage, { skipTextKinds: ["talle", "nombre", "numero"] });
+    painter.drawPiece(page, print, toPage, { skipTextKinds: ["talle"] });
+  }
+  return doc.save();
 }
