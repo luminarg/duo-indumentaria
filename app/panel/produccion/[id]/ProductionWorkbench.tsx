@@ -971,14 +971,19 @@ function DesignForm({
         )}
         <label className="flex items-center gap-2 text-sm font-medium text-zinc-900">
           <input type="checkbox" checked={config.sizeTag.enabled} onChange={(e) => update((c) => ({ ...c, sizeTag: { ...c.sizeTag, enabled: e.target.checked } }))} />
-          Talle en la esquina de cada pieza
+          Talle en el ruedo de cada pieza (para la costurera)
         </label>
         {config.sizeTag.enabled && (
           <div className="grid grid-cols-2 gap-2 pl-6">
-            <Select label="Esquina de la base" value={config.sizeTag.corner} onChange={(e) => update((c) => ({ ...c, sizeTag: { ...c.sizeTag, corner: e.target.value as "derecha" | "izquierda" } }))}>
-              <option value="derecha">Derecha</option>
-              <option value="izquierda">Izquierda</option>
+            <p className="col-span-2 text-xs text-zinc-500">
+              Al ras del borde donde se dobla para la costura, en frente, espalda y mangas (en la manga, en el puño). Queda dentro del dobladillo.
+            </p>
+            <Select label="Dónde" value={config.sizeTag.corner} onChange={(e) => update((c) => ({ ...c, sizeTag: { ...c.sizeTag, corner: e.target.value as "derecha" | "izquierda" | "centro" } }))}>
+              <option value="derecha">Esquina derecha</option>
+              <option value="izquierda">Esquina izquierda</option>
+              <option value="centro">Al centro</option>
             </Select>
+            <Num label="Distancia a la línea (mm)" step={0.5} value={config.sizeTag.marginMm} onChange={(n) => update((c) => ({ ...c, sizeTag: { ...c.sizeTag, marginMm: n } }))} hint="1 mm = al ras, sin pisar el contorno" />
             <Num label="Alto (mm)" value={config.sizeTag.heightMm} onChange={(n) => update((c) => ({ ...c, sizeTag: { ...c.sizeTag, heightMm: n } }))} hint="Contra el borde, dentro del ruedo" />
             {fontSelect("Fuente", config.sizeTag.font, (font) => update((c) => ({ ...c, sizeTag: { ...c.sizeTag, font } })))}
           </div>

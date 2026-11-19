@@ -245,7 +245,11 @@ export async function exportRollPdf(layout: RollLayout, background: BackgroundRu
         const size = t.heightMm / capHeightRatio(font);
         const w = font.widthOfTextAtSize(t.text, size);
         const baseline = { x: t.center.x - w / 2, y: t.center.y + t.heightMm / 2 };
-        const local: Affine = { a: 1, b: 0, c: 0, d: -1, e: baseline.x, f: baseline.y };
+        // Texto dado vuelta (180°) alrededor de su centro.
+        const local: Affine =
+          t.rotation === 180
+            ? { a: -1, b: 0, c: 0, d: 1, e: 2 * t.center.x - baseline.x, f: 2 * t.center.y - baseline.y }
+            : { a: 1, b: 0, c: 0, d: -1, e: baseline.x, f: baseline.y };
         page.pushOperators(pushGraphicsState(), cm(compose(local, pieceToPage)));
         page.drawText(t.text, { x: 0, y: 0, size, font, color: t.style.fill ? hexToRgb(t.style.fill) : BLACK });
         page.pushOperators(popGraphicsState());

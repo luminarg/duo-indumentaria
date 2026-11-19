@@ -120,6 +120,7 @@ export function PiecePreview({
             key={i}
             x={t.center.x}
             y={t.center.y + t.heightMm / 2}
+            transform={t.rotation === 180 ? `rotate(180 ${t.center.x} ${t.center.y})` : undefined}
             textAnchor="middle"
             fontSize={t.heightMm / (fontInfo[t.style.font]?.capRatio ?? 0.72)}
             fontFamily={fontInfo[t.style.font] ? `"${fontInfo[t.style.font].family}"` : "Helvetica, Arial, sans-serif"}

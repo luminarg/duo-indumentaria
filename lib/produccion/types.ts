@@ -113,7 +113,7 @@ export type SizeTagRule = {
   enabled: boolean;
   pieceKinds: PieceKind[];
   /** Esquina de la base (lado del dibujo, visto desde afuera). */
-  corner: "derecha" | "izquierda";
+  corner: "derecha" | "izquierda" | "centro";
   /** Separación entre el texto y la línea de la pieza. */
   marginMm: number;
   /** Alto del texto del talle. */
@@ -278,6 +278,8 @@ export type PlacedText = {
   heightMm: number; // alto de mayúsculas
   widthMm: number;
   style: TextStyle;
+  /** 180 = texto dado vuelta (pieza dibujada al revés: el ruedo queda arriba). */
+  rotation?: 0 | 180;
 };
 
 /** Elemento anclado ya ubicado. */

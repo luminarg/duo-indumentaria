@@ -53,7 +53,7 @@ export const DESIGN_CLIP_INSET_MM = 1.5;
  * pieza, lo más abajo y hacia el costado posible, a `margin` mm adentro de la
  * línea. Devuelve null si no entra.
  */
-export function cornerPlacement(outline: PatternPiece["outline"], w: number, h: number, margin: number, corner: "derecha" | "izquierda") {
+export function cornerPlacement(outline: PatternPiece["outline"], w: number, h: number, margin: number, corner: "derecha" | "izquierda" | "centro") {
   const inner = offset(outline, -margin);
   if (!inner) return null;
   const ib = bbox(inner);
@@ -69,7 +69,7 @@ export function cornerPlacement(outline: PatternPiece["outline"], w: number, h: 
       right = Math.min(right, sp[1]);
     }
     if (!ok || right - left < w) continue;
-    const cx = corner === "derecha" ? right - w / 2 - 0.05 : left + w / 2 + 0.05;
+    const cx = corner === "derecha" ? right - w / 2 - 0.05 : corner === "izquierda" ? left + w / 2 + 0.05 : (left + right) / 2;
     const center = { x: cx, y: (yb + yt) / 2 };
     if (areaOutside(rectPoly(center.x, center.y, w, h), inner) < 0.5) return center;
   }
@@ -241,8 +241,17 @@ export function buildPrintPieces({ pieces, assembly, design, garments, measure }
         const color = !tag.color || tag.color === "auto" ? contrastOn(design.background.color) : tag.color;
         const style: TextStyle = { font: tag.font || DEFAULT_FONT, fill: color };
         const w = measure(piece.sizeLabel, style.font, tag.heightMm);
-        const center = cornerPlacement(piece.outline, w, tag.heightMm, tag.marginMm, tag.corner);
-        if (center) texts.push({ kind: "talle", text: piece.sizeLabel, center, heightMm: tag.heightMm, widthMm: w, style });
+        // El ruedo es la base de la pieza. Si esta pieza está dibujada al revés
+        // respecto del talle base (puño o ruedo arriba), va arriba y dado vuelta.
+        const basePiece = base.find((p) => p.kind === piece.kind);
+        const flipped = !!basePiece && rotatedVsBase(basePiece, piece);
+        const pb = bbox(piece.outline);
+        const pc = { x: (pb.minX + pb.maxX) / 2, y: (pb.minY + pb.maxY) / 2 };
+        const flip = (p: { x: number; y: number }) => ({ x: 2 * pc.x - p.x, y: 2 * pc.y - p.y });
+        const placeOn = flipped ? piece.outline.map(flip) : piece.outline;
+        const c0 = cornerPlacement(placeOn, w, tag.heightMm, tag.marginMm, tag.corner);
+        const center = c0 && flipped ? flip(c0) : c0;
+        if (center) texts.push({ kind: "talle", text: piece.sizeLabel, center, heightMm: tag.heightMm, widthMm: w, style, rotation: flipped ? 180 : 0 });
         else pieceWarnings.push({ pieceId: piece.id, message: `No entra el talle en la esquina de ${piece.kind} talle ${piece.sizeLabel}` });
       }
 

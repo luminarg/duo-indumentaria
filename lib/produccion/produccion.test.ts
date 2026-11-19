@@ -575,3 +575,30 @@ describe("arte llevado a otros talles (ajuste y piezas giradas)", () => {
     expect(capRot.y).toBeCloseTo(2 * cy - capUp.y, 3);
   });
 });
+
+describe("talle en el ruedo", () => {
+  it("va al ras de la base en todas las piezas, y arriba dado vuelta si la pieza está dibujada al revés", () => {
+    const molds = sampleMolds();
+    const t0 = molds.find((m) => m.sizeLabel === "L" && m.kind === "manga_izq")!;
+    const tb = bbox(t0.outline);
+    const cx = (tb.minX + tb.maxX) / 2, cy = (tb.minY + tb.maxY) / 2;
+    const rotated = { ...t0, id: "rot", outline: t0.outline.map((p) => ({ x: 2 * cx - p.x, y: 2 * cy - p.y })) };
+    const pieces = molds.map((m) => (m === t0 ? rotated : m));
+    const design = defaultDesignConfig();
+    design.baseSizeLabel = "M";
+    const garments: GarmentRequest[] = ["M", "L"].map((s) => ({ orderItemId: s, sizeLabel: s, variant: "jugador" }));
+    const { prints } = buildPrintPieces({ pieces, assembly: DEFAULT_ASSEMBLY, design, garments, measure: approxMeasurer });
+    for (const p of prints) {
+      const tag = p.texts.find((t) => t.kind === "talle")!;
+      expect(tag, `${p.piece.kind} ${p.piece.sizeLabel}`).toBeTruthy();
+      const b = bbox(p.piece.outline);
+      if (p.piece.id === "rot") {
+        expect(tag.rotation).toBe(180);
+        expect(tag.center.y - tag.heightMm / 2 - b.minY).toBeLessThan(25); // arriba, junto al puño
+      } else {
+        expect(tag.rotation ?? 0).toBe(0);
+        expect(b.maxY - (tag.center.y + tag.heightMm / 2)).toBeLessThan(25); // abajo, junto al ruedo
+      }
+    }
+  });
+});
