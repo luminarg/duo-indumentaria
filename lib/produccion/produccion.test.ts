@@ -602,3 +602,20 @@ describe("talle en el ruedo", () => {
     }
   });
 });
+
+describe("PDF con paños uno al lado del otro", () => {
+  it("una sola página: paños de 1550 mm separados 50 cm, todos arriba", async () => {
+    const garments: GarmentRequest[] = Array.from({ length: 10 }, (_, i) => ({ orderItemId: `g${i}`, sizeLabel: "M", variant: "jugador" }));
+    const { prints } = buildPrintPieces({ pieces: sampleMolds(), assembly: DEFAULT_ASSEMBLY, design: defaultDesignConfig(), garments, measure: approxMeasurer });
+    const L = nest(prints, { ...DEFAULT_SETTINGS, maxSegmentLengthMm: 2000 });
+    const n = L.segments.length;
+    expect(n).toBeGreaterThan(1);
+    const { bytes } = await exportRollPdf(L, defaultDesignConfig().background, {}, { sideBySide: { gapMm: 500 } });
+    const doc = await PDFDocument.load(bytes);
+    expect(doc.getPageCount()).toBe(1);
+    const mm = 72 / 25.4;
+    const pg = doc.getPage(0);
+    expect(pg.getWidth() / mm).toBeCloseTo(n * 1550 + (n - 1) * 500, 0);
+    expect(pg.getHeight() / mm).toBeCloseTo(Math.max(...L.segments.map((s) => s.endMm - s.startMm)), 0);
+  });
+});

@@ -99,7 +99,15 @@ function embeddedToCanvas(page: PDFEmbeddedPage): Affine {
   return { a: 1 / MM, b: 0, c: 0, d: -1 / MM, e: 0, f: hMm };
 }
 
-export async function exportRollPdf(layout: RollLayout, background: BackgroundRule, assets: ExportAssets = {}) {
+export type ExportOptions = {
+  /**
+   * Paños uno al lado del otro en UNA página, separados `gapMm` (así lo arma
+   * el taller en Corel). Sin esto, cada paño es una página.
+   */
+  sideBySide?: { gapMm: number };
+};
+
+export async function exportRollPdf(layout: RollLayout, background: BackgroundRule, assets: ExportAssets = {}, opts: ExportOptions = {}) {
   const doc = await PDFDocument.create();
   doc.registerFontkit(fontkit);
   doc.setTitle("Rollo de sublimación");
@@ -116,11 +124,18 @@ export async function exportRollPdf(layout: RollLayout, background: BackgroundRu
   for (const [path, bytes] of Object.entries(assets.elements ?? {})) elementPages[path] = (await doc.embedPdf(bytes, [0]))[0];
 
   const segments = splitSegments(layout);
-  for (const seg of segments) {
+  const rollW = layout.settings.rollWidthMm;
+  const gap = Math.max(0, opts.sideBySide?.gapMm ?? 0);
+  const sheetH = Math.max(1, ...segments.map((s) => s.endMm - s.startMm));
+  const sheet = opts.sideBySide ? doc.addPage([(segments.length * rollW + Math.max(0, segments.length - 1) * gap) * MM, sheetH * MM]) : null;
+  for (const [segIndex, seg] of segments.entries()) {
     const lengthMm = seg.endMm - seg.startMm;
-    const page = doc.addPage([layout.settings.rollWidthMm * MM, lengthMm * MM]);
+    const page = sheet ?? doc.addPage([rollW * MM, lengthMm * MM]);
     // Rollo (mm, Y abajo, desde el inicio del tramo) → página (pt, Y arriba).
-    const rollToPage: Affine = { a: MM, b: 0, c: 0, d: -MM, e: 0, f: seg.endMm * MM };
+    // Uno al lado del otro: cada paño corrido a la derecha, todos arriba.
+    const rollToPage: Affine = sheet
+      ? { a: MM, b: 0, c: 0, d: -MM, e: segIndex * (rollW + gap) * MM, f: (sheetH + seg.startMm) * MM }
+      : { a: MM, b: 0, c: 0, d: -MM, e: 0, f: seg.endMm * MM };
 
     const names = new Map<PDFEmbeddedPage, PDFName>();
     const xobj = (p: PDFEmbeddedPage) => {

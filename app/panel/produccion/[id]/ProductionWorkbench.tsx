@@ -92,6 +92,9 @@ export function ProductionWorkbench(props: {
   // Largo de cada paño (página del PDF) y del rollo de tela/papel, en metros.
   const [panoM, setPanoM] = useState(5);
   const [rolloM, setRolloM] = useState(0);
+  // Cómo sale el PDF: un paño por página, o todos uno al lado del otro (como en Corel).
+  const [pdfLayout, setPdfLayout] = useState<"lado" | "paginas">("lado");
+  const [gapCm, setGapCm] = useState(50);
 
   const selectContext = (reqId: string, compId: string, v: "jugador" | "arquero") => {
     const comps = componentsFor(reqId);
@@ -427,7 +430,7 @@ export function ProductionWorkbench(props: {
       setLayout(addCollarPanel(roll, config.collars, garments.length, designConfig.background.color));
     });
 
-  async function makePdfBytes(l: RollLayout) {
+  async function makePdfBytes(l: RollLayout, sheetMode = true) {
     const paths = [config.background.filePath, config.sizeIndicator.artPath, config.collars.artPath, ...config.elements.map((e) => e.filePath)].filter(Boolean) as string[];
     const missing = paths.filter((p) => !assets[p]);
     const downloaded = missing.length ? await downloadProductionFiles(missing) : {};
@@ -451,7 +454,12 @@ export function ProductionWorkbench(props: {
       if (!b) throw new Error("No se encontró una fuente del diseño. Elegila de nuevo o subila otra vez.");
       fonts[f] = b;
     }
-    const { bytes } = await exportRollPdf(l, designConfig.background, { background: bg, elements, fonts, backgrounds });
+    const { bytes } = await exportRollPdf(
+      l,
+      designConfig.background,
+      { background: bg, elements, fonts, backgrounds },
+      sheetMode && pdfLayout === "lado" && l.segments.length > 1 ? { sideBySide: { gapMm: gapCm * 10 } } : {}
+    );
     return bytes;
   }
   async function makePdf(l: RollLayout) {
@@ -475,7 +483,7 @@ export function ProductionWorkbench(props: {
       const out = await PDFDocument.create();
       out.setTitle("Diseño escalado por talle");
       for (const sh of sheets) {
-        const src = await PDFDocument.load(await makePdfBytes(sh.layout));
+        const src = await PDFDocument.load(await makePdfBytes(sh.layout, false));
         const pages = await out.copyPages(src, src.getPageIndices());
         pages.forEach((pg) => out.addPage(pg));
       }
@@ -647,6 +655,17 @@ export function ProductionWorkbench(props: {
               <div className="w-28">
                 <Num label="Paños de (m)" step={0.5} value={panoM} onChange={(n) => { setPanoM(n); setLayout(null); }} />
               </div>
+              <div className="w-48">
+                <Select label="PDF" value={pdfLayout} onChange={(e) => setPdfLayout(e.target.value as "lado" | "paginas")}>
+                  <option value="lado">Paños uno al lado del otro</option>
+                  <option value="paginas">Una página por paño</option>
+                </Select>
+              </div>
+              {pdfLayout === "lado" && (
+                <div className="w-28">
+                  <Num label="Separación (cm)" step={5} value={gapCm} onChange={(n) => setGapCm(Math.max(0, n))} />
+                </div>
+              )}
               <div className="w-32">
                 <Num label="Rollo de (m)" step={1} value={rolloM} onChange={(n) => { setRolloM(n); }} hint="0 = sin límite" />
               </div>
@@ -667,7 +686,7 @@ export function ProductionWorkbench(props: {
               <div className="mt-3 flex flex-col gap-3">
                 <p className="text-sm text-zinc-700">
                   <b>{(layout.lengthMm / 1000).toFixed(2)} m lineales</b> en {DEFAULT_SETTINGS.rollWidthMm} mm · {layout.placed.length} piezas ·{" "}
-                  {layout.segments.length} {layout.segments.length === 1 ? "paño" : "paños"} de hasta {panoM} m (una página del PDF por paño; ninguna pieza queda partida)
+                  {layout.segments.length} {layout.segments.length === 1 ? "paño" : "paños"} de hasta {panoM} m ({pdfLayout === "lado" ? `en el PDF van uno al lado del otro, separados ${gapCm} cm` : "una página del PDF por paño"}; ninguna pieza queda partida)
                 </p>
                 <ul className="text-xs text-zinc-600">
                   {layout.segments.map((sg, i) => (
