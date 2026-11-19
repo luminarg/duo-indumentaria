@@ -28,7 +28,7 @@ import {
 } from "pdf-lib";
 import { bbox, compose, offset, translate } from "./geometry";
 import { placementTransform } from "./nesting";
-import { embedSrgbProfile } from "./colorProfile";
+import { embedAsGroup, embedSrgbProfile, markTransparencyGroup } from "./colorProfile";
 import type { MockupLayout } from "./mockup";
 import type { TextMeasurer } from "./build";
 import type { Affine, BackgroundRule, PlacedText, Poly, PrintPiece, RollLayout, Segment } from "./types";
@@ -126,10 +126,10 @@ async function createPainter(doc: PDFDocument, background: BackgroundRule, asset
   for (const [name, bytes] of Object.entries(assets.fonts ?? {})) fonts[name] = await doc.embedFont(bytes, { subset: true });
 
   const bgPages: Record<string, PDFEmbeddedPage> = {};
-  for (const [path, bytes] of Object.entries(assets.backgrounds ?? {})) bgPages[path] = (await doc.embedPdf(bytes, [0]))[0];
-  const defaultBg = assets.background ? (await doc.embedPdf(assets.background, [0]))[0] : null;
+  for (const [path, bytes] of Object.entries(assets.backgrounds ?? {})) bgPages[path] = await embedAsGroup(doc, bytes);
+  const defaultBg = assets.background ? await embedAsGroup(doc, assets.background) : null;
   const elementPages: Record<string, PDFEmbeddedPage> = {};
-  for (const [path, bytes] of Object.entries(assets.elements ?? {})) elementPages[path] = (await doc.embedPdf(bytes, [0]))[0];
+  for (const [path, bytes] of Object.entries(assets.elements ?? {})) elementPages[path] = await embedAsGroup(doc, bytes);
 
 
   const xobjNames = new WeakMap<PDFPage, Map<PDFEmbeddedPage, PDFName>>();
@@ -253,9 +253,11 @@ export async function exportRollPdf(layout: RollLayout, background: BackgroundRu
   const gap = Math.max(0, opts.sideBySide?.gapMm ?? 0);
   const sheetH = Math.max(1, ...segments.map((s) => s.endMm - s.startMm));
   const sheet = opts.sideBySide ? doc.addPage([(segments.length * rollW + Math.max(0, segments.length - 1) * gap) * MM, sheetH * MM]) : null;
+  if (sheet) markTransparencyGroup(sheet);
   for (const [segIndex, seg] of segments.entries()) {
     const lengthMm = seg.endMm - seg.startMm;
     const page = sheet ?? doc.addPage([rollW * MM, lengthMm * MM]);
+    markTransparencyGroup(page);
     // Rollo (mm, Y abajo, desde el inicio del tramo) → página (pt, Y arriba).
     // Uno al lado del otro: cada paño corrido a la derecha, todos arriba.
     const rollToPage: Affine = sheet
@@ -348,6 +350,7 @@ export async function exportMockupPdf(mock: MockupLayout, background: Background
   doc.setCreator("Duo Indumentaria — Módulo de producción");
   const painter = await createPainter(doc, background, assets);
   const page = doc.addPage([mock.widthMm * MM, mock.heightMm * MM]);
+  markTransparencyGroup(page);
   const toPage: Affine = { a: MM, b: 0, c: 0, d: -MM, e: 0, f: mock.heightMm * MM };
   page.pushOperators(setFillingRgbColor(0.957, 0.957, 0.961), ...pathOps([{ x: 0, y: 0 }, { x: mock.widthMm * MM, y: 0 }, { x: mock.widthMm * MM, y: mock.heightMm * MM }, { x: 0, y: mock.heightMm * MM }]), fill());
   // Sombras primero (todas debajo), así no se ven entre la manga y el cuerpo.
@@ -411,6 +414,7 @@ export async function exportPiecePages(prints: PrintPiece[], background: Backgro
     const w = b.maxX - b.minX + 2 * margin;
     const h = b.maxY - b.minY + 2 * margin;
     const page = doc.addPage([w * MM, h * MM]);
+    markTransparencyGroup(page);
     const toPage: Affine = { a: MM, b: 0, c: 0, d: -MM, e: (margin - b.minX) * MM, f: (h - margin + b.minY) * MM };
     const c = { x: (b.minX + b.maxX) / 2, y: (b.minY + b.maxY) / 2 };
     // Fondo de la página del color de la pieza (fuera de la línea no queda blanco).

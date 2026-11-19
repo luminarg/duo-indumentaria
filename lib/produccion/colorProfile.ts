@@ -1,4 +1,4 @@
-import { PDFDocument, PDFName, PDFString } from "pdf-lib";
+import { PDFDocument, PDFName, PDFPage, PDFRawStream, PDFStream, PDFString } from "pdf-lib";
 import { SRGB_ICC_BASE64 } from "./srgbIcc";
 
 function base64ToBytes(b64: string) {
@@ -27,4 +27,27 @@ export function embedSrgbProfile(doc: PDFDocument) {
     DestOutputProfile: iccRef,
   });
   doc.catalog.set(PDFName.of("OutputIntents"), ctx.obj([intent]));
+}
+
+const groupDict = (doc: PDFDocument) => doc.context.obj({ Type: "Group", S: "Transparency", CS: "DeviceRGB" });
+
+/**
+ * Marca la página como grupo de transparencia (como hace Corel al exportar).
+ * Sin esto, Corel importa las transparencias (máscaras de degradé) como si
+ * fueran sólidas.
+ */
+export function markTransparencyGroup(page: PDFPage) {
+  page.node.set(PDFName.of("Group"), groupDict(page.doc));
+}
+
+/**
+ * Inserta la primera página de un PDF como objeto reutilizable y le copia el
+ * grupo de transparencia de la página original (pdf-lib no lo copia).
+ */
+export async function embedAsGroup(doc: PDFDocument, bytes: Uint8Array) {
+  const [emb] = await doc.embedPdf(bytes, [0]);
+  await emb.embed();
+  const xobj = doc.context.lookup(emb.ref);
+  if (xobj instanceof PDFStream || xobj instanceof PDFRawStream) xobj.dict.set(PDFName.of("Group"), groupDict(doc));
+  return emb;
 }

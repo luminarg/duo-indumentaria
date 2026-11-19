@@ -1,4 +1,4 @@
-import { embedSrgbProfile } from "./colorProfile";
+import { embedSrgbProfile, markTransparencyGroup } from "./colorProfile";
 import {
   PDFDict,
   PDFDocument,
@@ -40,6 +40,7 @@ export async function templateToPdf(shapes: Shape[], widthMm: number, heightMm: 
   doc.setTitle("Fondo generado por plantilla");
   doc.setCreator("Duo Indumentaria — Módulo de producción");
   const page = doc.addPage([widthMm * MM, heightMm * MM]);
+  markTransparencyGroup(page);
   const ctx = doc.context;
   // Lienzo (mm, Y abajo) → página (pt, Y arriba).
   page.pushOperators(pushGraphicsState(), concatTransformationMatrix(MM, 0, 0, -MM, 0, heightMm * MM));
