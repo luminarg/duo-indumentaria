@@ -2,6 +2,7 @@ import fontkit from "@pdf-lib/fontkit";
 import {
   PDFDocument,
   PDFEmbeddedPage,
+  PDFPage,
   PDFFont,
   PDFName,
   StandardFonts,
@@ -18,12 +19,18 @@ import {
   PDFOperator,
   PDFOperatorNames,
   setFillingRgbColor,
+  setStrokingRgbColor,
+  setLineWidth,
+  setLineJoin,
+  LineJoinStyle,
+  stroke,
   drawObject,
 } from "pdf-lib";
 import { bbox, compose, translate } from "./geometry";
 import { placementTransform } from "./nesting";
+import type { MockupLayout } from "./mockup";
 import type { TextMeasurer } from "./build";
-import type { Affine, BackgroundRule, Poly, RollLayout, Segment } from "./types";
+import type { Affine, BackgroundRule, PlacedText, Poly, PrintPiece, RollLayout, Segment } from "./types";
 
 // Exportación del rollo a PDF vectorial.
 //
@@ -107,12 +114,12 @@ export type ExportOptions = {
   sideBySide?: { gapMm: number };
 };
 
-export async function exportRollPdf(layout: RollLayout, background: BackgroundRule, assets: ExportAssets = {}, opts: ExportOptions = {}) {
-  const doc = await PDFDocument.create();
+/**
+ * Prepara un documento para dibujar piezas impresas: fuentes, fondos y
+ * elementos embebidos una sola vez. Lo usan el rollo y el mockup.
+ */
+async function createPainter(doc: PDFDocument, background: BackgroundRule, assets: ExportAssets) {
   doc.registerFontkit(fontkit);
-  doc.setTitle("Rollo de sublimación");
-  doc.setCreator("Duo Indumentaria — Módulo de producción");
-
   const helvetica = await doc.embedFont(StandardFonts.HelveticaBold);
   const fonts: Record<string, PDFFont> = { "Helvetica-Bold": helvetica };
   for (const [name, bytes] of Object.entries(assets.fonts ?? {})) fonts[name] = await doc.embedFont(bytes, { subset: true });
@@ -122,6 +129,122 @@ export async function exportRollPdf(layout: RollLayout, background: BackgroundRu
   const defaultBg = assets.background ? (await doc.embedPdf(assets.background, [0]))[0] : null;
   const elementPages: Record<string, PDFEmbeddedPage> = {};
   for (const [path, bytes] of Object.entries(assets.elements ?? {})) elementPages[path] = (await doc.embedPdf(bytes, [0]))[0];
+
+
+  const xobjNames = new WeakMap<PDFPage, Map<PDFEmbeddedPage, PDFName>>();
+  const xobjFor = (page: PDFPage) => (p: PDFEmbeddedPage): PDFName => {
+    let m = xobjNames.get(page);
+    if (!m) {
+      m = new Map();
+      xobjNames.set(page, m);
+    }
+    const hit = m.get(p);
+    if (hit) return hit;
+    const n = page.node.newXObject("Arte", p.ref);
+    m.set(p, n);
+    return n;
+  };
+
+  /**
+   * Dibuja una pieza: fondo, elementos, indicador y textos. `pieceToPage`
+   * puede ser cualquier transformación (en el mockup las mangas van giradas).
+   */
+  function drawPiece(page: PDFPage, print: PrintPiece, pieceToPage: Affine, opts: { skipTextKinds?: PlacedText["kind"][] } = {}) {
+    const xobj = xobjFor(page);
+    const outline = print.piece.outline;
+    // 1. Fondo recortado por la línea de la pieza.
+    const bgPage = print.bgFile ? (bgPages[print.bgFile] ?? (print.bgFile === background.filePath ? defaultBg : null)) : print.bgFile === undefined ? defaultBg : null;
+    const bgColor = print.bgColor !== undefined ? print.bgColor : background.color;
+    page.pushOperators(pushGraphicsState(), cm(pieceToPage), ...pathOps(outline), clip(), endPath());
+    if (bgColor) {
+      const c = hexToRgb(bgColor);
+      page.pushOperators(setFillingRgbColor(c.red, c.green, c.blue), ...pathOps(outline), fill());
+    }
+    const clipCanvas = print.backgroundClip;
+    if (bgPage && !(clipCanvas && clipCanvas.length === 0)) {
+      // Lienzo del diseño → pieza. En modo "piezas" se recorta además por la
+      // pieza del diseño, así no entra el contorno ni el arte de otra pieza.
+      if (clipCanvas && clipCanvas.length > 2) {
+        // Sangrado: abajo, una copia del arte de esta pieza agrandada un 6 %
+        // desde su centro. Si la pieza de otro talle no coincide exacto con
+        // la del diseño (sisa, ruedo), los bordes se completan con el mismo
+        // arte en vez de quedar del color de fondo.
+        const pb = bbox(outline);
+        const c = { x: (pb.minX + pb.maxX) / 2, y: (pb.minY + pb.maxY) / 2 };
+        const k = 1.06;
+        const grow: Affine = { a: k, b: 0, c: 0, d: k, e: c.x * (1 - k), f: c.y * (1 - k) };
+        page.pushOperators(pushGraphicsState(), cm(grow), cm(print.backgroundTransform), ...pathOps(clipCanvas), clip(), endPath());
+        page.pushOperators(cm(embeddedToCanvas(bgPage)), drawObject(xobj(bgPage)), popGraphicsState());
+      }
+      page.pushOperators(pushGraphicsState(), cm(print.backgroundTransform));
+      if (clipCanvas && clipCanvas.length > 2) page.pushOperators(...pathOps(clipCanvas), clip(), endPath());
+      page.pushOperators(cm(embeddedToCanvas(bgPage)), drawObject(xobj(bgPage)), popGraphicsState());
+    }
+
+    // 2. Elementos anclados (escudo, sponsors), también recortados.
+    for (const el of print.elements) {
+      const art = el.filePath ? elementPages[el.filePath] : undefined;
+      if (!art) continue;
+      const s = el.widthMm / (art.width / MM);
+      const m = compose(
+        compose(embeddedToCanvas(art), { a: s, b: 0, c: 0, d: s, e: 0, f: 0 }),
+        translate(el.center.x - el.widthMm / 2, el.center.y - el.heightMm / 2)
+      );
+      page.pushOperators(pushGraphicsState(), cm(m), drawObject(xobj(art)), popGraphicsState());
+    }
+    page.pushOperators(popGraphicsState());
+
+    // 3. Indicador de talle: arte subido, o cuadrado con borde.
+    for (const bx of print.boxes ?? []) {
+      const art = bx.artPath ? elementPages[bx.artPath] : undefined;
+      if (art) {
+        const s = bx.widthMm / (art.width / MM);
+        const m = compose(
+          compose(embeddedToCanvas(art), { a: s, b: 0, c: 0, d: s, e: 0, f: 0 }),
+          translate(bx.center.x - bx.widthMm / 2, bx.center.y - bx.heightMm / 2)
+        );
+        page.pushOperators(pushGraphicsState(), cm(pieceToPage), cm(m), drawObject(xobj(art)), popGraphicsState());
+        continue;
+      }
+      if (!bx.strokeMm) continue;
+      const c = hexToRgb(bx.color);
+      const hw = bx.widthMm / 2, hh = bx.heightMm / 2, t = bx.strokeMm;
+      const { x, y } = bx.center;
+      const outerSq = [{ x: x - hw, y: y - hh }, { x: x + hw, y: y - hh }, { x: x + hw, y: y + hh }, { x: x - hw, y: y + hh }];
+      const innerSq = [{ x: x - hw + t, y: y - hh + t }, { x: x - hw + t, y: y + hh - t }, { x: x + hw - t, y: y + hh - t }, { x: x + hw - t, y: y - hh + t }];
+      page.pushOperators(pushGraphicsState(), cm(pieceToPage), setFillingRgbColor(c.red, c.green, c.blue), ...pathOps(outerSq), ...pathOps(innerSq), fillEvenOdd(), popGraphicsState());
+    }
+
+    // 4. Textos: nombre, número, talle. Matriz local con Y hacia arriba,
+    //    para que el texto no salga espejado ni dado vuelta.
+    for (const t of print.texts) {
+      if (opts.skipTextKinds?.includes(t.kind)) continue;
+      const font = fonts[t.style.font] ?? helvetica;
+      const size = t.heightMm / capHeightRatio(font);
+      const w = font.widthOfTextAtSize(t.text, size);
+      const baseline = { x: t.center.x - w / 2, y: t.center.y + t.heightMm / 2 };
+      // Texto dado vuelta (180°) alrededor de su centro.
+      const local: Affine =
+        t.rotation === 180
+          ? { a: -1, b: 0, c: 0, d: 1, e: 2 * t.center.x - baseline.x, f: 2 * t.center.y - baseline.y }
+          : { a: 1, b: 0, c: 0, d: -1, e: baseline.x, f: baseline.y };
+      page.pushOperators(pushGraphicsState(), cm(compose(local, pieceToPage)));
+      page.drawText(t.text, { x: 0, y: 0, size, font, color: t.style.fill ? hexToRgb(t.style.fill) : BLACK });
+      page.pushOperators(popGraphicsState());
+    }
+
+  }
+
+  return { drawPiece, helvetica, fonts, elementPages, xobjFor };
+}
+
+export async function exportRollPdf(layout: RollLayout, background: BackgroundRule, assets: ExportAssets = {}, opts: ExportOptions = {}) {
+  const doc = await PDFDocument.create();
+  doc.setTitle("Rollo de sublimación");
+  doc.setCreator("Duo Indumentaria — Módulo de producción");
+
+  const painter = await createPainter(doc, background, assets);
+  const elementPages = painter.elementPages;
 
   const segments = splitSegments(layout);
   const rollW = layout.settings.rollWidthMm;
@@ -137,15 +260,7 @@ export async function exportRollPdf(layout: RollLayout, background: BackgroundRu
       ? { a: MM, b: 0, c: 0, d: -MM, e: segIndex * (rollW + gap) * MM, f: (sheetH + seg.startMm) * MM }
       : { a: MM, b: 0, c: 0, d: -MM, e: 0, f: seg.endMm * MM };
 
-    const names = new Map<PDFEmbeddedPage, PDFName>();
-    const xobj = (p: PDFEmbeddedPage) => {
-      let n = names.get(p);
-      if (!n) {
-        n = page.node.newXObject("Arte", p.ref);
-        names.set(p, n);
-      }
-      return n;
-    };
+    const xobj = painter.xobjFor(page);
 
     // Panel de cuellos: tiras a lo ancho, con la línea divisoria entre ellas.
     if (seg.collars) {
@@ -189,86 +304,7 @@ export async function exportRollPdf(layout: RollLayout, background: BackgroundRu
       const outline = print.piece.outline;
       const pieceToRoll = placementTransform(outline, placed.rotation, placed.dx, placed.dy);
       const pieceToPage = compose(pieceToRoll, rollToPage);
-
-      // 1. Fondo recortado por la línea de la pieza.
-      const bgPage = print.bgFile ? (bgPages[print.bgFile] ?? (print.bgFile === background.filePath ? defaultBg : null)) : print.bgFile === undefined ? defaultBg : null;
-      const bgColor = print.bgColor !== undefined ? print.bgColor : background.color;
-      page.pushOperators(pushGraphicsState(), cm(pieceToPage), ...pathOps(outline), clip(), endPath());
-      if (bgColor) {
-        const c = hexToRgb(bgColor);
-        page.pushOperators(setFillingRgbColor(c.red, c.green, c.blue), ...pathOps(outline), fill());
-      }
-      const clipCanvas = print.backgroundClip;
-      if (bgPage && !(clipCanvas && clipCanvas.length === 0)) {
-        // Lienzo del diseño → pieza. En modo "piezas" se recorta además por la
-        // pieza del diseño, así no entra el contorno ni el arte de otra pieza.
-        if (clipCanvas && clipCanvas.length > 2) {
-          // Sangrado: abajo, una copia del arte de esta pieza agrandada un 6 %
-          // desde su centro. Si la pieza de otro talle no coincide exacto con
-          // la del diseño (sisa, ruedo), los bordes se completan con el mismo
-          // arte en vez de quedar del color de fondo.
-          const pb = bbox(outline);
-          const c = { x: (pb.minX + pb.maxX) / 2, y: (pb.minY + pb.maxY) / 2 };
-          const k = 1.06;
-          const grow: Affine = { a: k, b: 0, c: 0, d: k, e: c.x * (1 - k), f: c.y * (1 - k) };
-          page.pushOperators(pushGraphicsState(), cm(grow), cm(print.backgroundTransform), ...pathOps(clipCanvas), clip(), endPath());
-          page.pushOperators(cm(embeddedToCanvas(bgPage)), drawObject(xobj(bgPage)), popGraphicsState());
-        }
-        page.pushOperators(pushGraphicsState(), cm(print.backgroundTransform));
-        if (clipCanvas && clipCanvas.length > 2) page.pushOperators(...pathOps(clipCanvas), clip(), endPath());
-        page.pushOperators(cm(embeddedToCanvas(bgPage)), drawObject(xobj(bgPage)), popGraphicsState());
-      }
-
-      // 2. Elementos anclados (escudo, sponsors), también recortados.
-      for (const el of print.elements) {
-        const art = el.filePath ? elementPages[el.filePath] : undefined;
-        if (!art) continue;
-        const s = el.widthMm / (art.width / MM);
-        const m = compose(
-          compose(embeddedToCanvas(art), { a: s, b: 0, c: 0, d: s, e: 0, f: 0 }),
-          translate(el.center.x - el.widthMm / 2, el.center.y - el.heightMm / 2)
-        );
-        page.pushOperators(pushGraphicsState(), cm(m), drawObject(xobj(art)), popGraphicsState());
-      }
-      page.pushOperators(popGraphicsState());
-
-      // 3. Indicador de talle: arte subido, o cuadrado con borde.
-      for (const bx of print.boxes ?? []) {
-        const art = bx.artPath ? elementPages[bx.artPath] : undefined;
-        if (art) {
-          const s = bx.widthMm / (art.width / MM);
-          const m = compose(
-            compose(embeddedToCanvas(art), { a: s, b: 0, c: 0, d: s, e: 0, f: 0 }),
-            translate(bx.center.x - bx.widthMm / 2, bx.center.y - bx.heightMm / 2)
-          );
-          page.pushOperators(pushGraphicsState(), cm(pieceToPage), cm(m), drawObject(xobj(art)), popGraphicsState());
-          continue;
-        }
-        if (!bx.strokeMm) continue;
-        const c = hexToRgb(bx.color);
-        const hw = bx.widthMm / 2, hh = bx.heightMm / 2, t = bx.strokeMm;
-        const { x, y } = bx.center;
-        const outerSq = [{ x: x - hw, y: y - hh }, { x: x + hw, y: y - hh }, { x: x + hw, y: y + hh }, { x: x - hw, y: y + hh }];
-        const innerSq = [{ x: x - hw + t, y: y - hh + t }, { x: x - hw + t, y: y + hh - t }, { x: x + hw - t, y: y + hh - t }, { x: x + hw - t, y: y - hh + t }];
-        page.pushOperators(pushGraphicsState(), cm(pieceToPage), setFillingRgbColor(c.red, c.green, c.blue), ...pathOps(outerSq), ...pathOps(innerSq), fillEvenOdd(), popGraphicsState());
-      }
-
-      // 4. Textos: nombre, número, talle. Matriz local con Y hacia arriba,
-      //    para que el texto no salga espejado ni dado vuelta.
-      for (const t of print.texts) {
-        const font = fonts[t.style.font] ?? helvetica;
-        const size = t.heightMm / capHeightRatio(font);
-        const w = font.widthOfTextAtSize(t.text, size);
-        const baseline = { x: t.center.x - w / 2, y: t.center.y + t.heightMm / 2 };
-        // Texto dado vuelta (180°) alrededor de su centro.
-        const local: Affine =
-          t.rotation === 180
-            ? { a: -1, b: 0, c: 0, d: 1, e: 2 * t.center.x - baseline.x, f: 2 * t.center.y - baseline.y }
-            : { a: 1, b: 0, c: 0, d: -1, e: baseline.x, f: baseline.y };
-        page.pushOperators(pushGraphicsState(), cm(compose(local, pieceToPage)));
-        page.drawText(t.text, { x: 0, y: 0, size, font, color: t.style.fill ? hexToRgb(t.style.fill) : BLACK });
-        page.pushOperators(popGraphicsState());
-      }
+      painter.drawPiece(page, print, pieceToPage);
 
       // 5. Contorno láser: anillo negro entre la línea y +3 mm.
       const outerInPiece = applyInverse(pieceToRoll, placed.outer);
@@ -296,4 +332,62 @@ function applyInverse(m: Affine, poly: Poly): Poly {
     const y = p.y - m.f;
     return { x: (m.d * x - m.c * y) / det, y: (-m.b * x + m.a * y) / det };
   });
+}
+
+/**
+ * Mockup plano en PDF (vectorial): frente y espalda con el arte real, sin
+ * contorno láser ni talle del ruedo. Fondo gris claro y un filete fino en
+ * cada pieza para que se lea la forma.
+ */
+export async function exportMockupPdf(mock: MockupLayout, background: BackgroundRule, assets: ExportAssets = {}, opts: { title?: string } = {}) {
+  const doc = await PDFDocument.create();
+  doc.setTitle(opts.title ?? "Mockup");
+  doc.setCreator("Duo Indumentaria — Módulo de producción");
+  const painter = await createPainter(doc, background, assets);
+  const page = doc.addPage([mock.widthMm * MM, mock.heightMm * MM]);
+  const toPage: Affine = { a: MM, b: 0, c: 0, d: -MM, e: 0, f: mock.heightMm * MM };
+  page.pushOperators(setFillingRgbColor(0.957, 0.957, 0.961), ...pathOps([{ x: 0, y: 0 }, { x: mock.widthMm * MM, y: 0 }, { x: mock.widthMm * MM, y: mock.heightMm * MM }, { x: 0, y: mock.heightMm * MM }]), fill());
+  // Sombras primero (todas debajo), así no se ven entre la manga y el cuerpo.
+  for (const v of mock.views) {
+    for (const it of v.items) {
+      const shadow = compose(it.transform, compose(translate(4, 6), toPage));
+      page.pushOperators(pushGraphicsState());
+      if (it.clip) page.pushOperators(cm(shadow), ...pathOps(it.clip), clip(), endPath(), cm(invertAffine(shadow)));
+      page.pushOperators(cm(shadow), setFillingRgbColor(0.82, 0.82, 0.84), ...pathOps(it.print.piece.outline), fill(), popGraphicsState());
+    }
+  }
+  for (const v of mock.views) {
+    for (const f of v.fills) {
+      const c = hexToRgb(f.color);
+      page.pushOperators(pushGraphicsState(), cm(toPage), setFillingRgbColor(c.red, c.green, c.blue), ...pathOps(f.poly), fill(), popGraphicsState());
+    }
+    for (const it of v.items) {
+      const pieceToPage = compose(it.transform, toPage);
+      page.pushOperators(pushGraphicsState());
+      if (it.clip) page.pushOperators(cm(pieceToPage), ...pathOps(it.clip), clip(), endPath(), cm(invertAffine(pieceToPage)));
+      painter.drawPiece(page, it.print, pieceToPage, { skipTextKinds: ["talle"] });
+      page.pushOperators(
+        pushGraphicsState(),
+        cm(pieceToPage),
+        setStrokingRgbColor(0.15, 0.16, 0.2),
+        setLineWidth(1.6),
+        setLineJoin(LineJoinStyle.Round),
+        ...pathOps(it.print.piece.outline),
+        stroke(),
+        popGraphicsState()
+      );
+      page.pushOperators(popGraphicsState());
+    }
+  }
+  for (const l of mock.labels) {
+    const size = 42 * MM; // ~30 mm de alto de mayúsculas
+    const w = painter.helvetica.widthOfTextAtSize(l.text, size);
+    page.drawText(l.text, { x: l.x * MM - w / 2, y: (mock.heightMm - l.y) * MM, size, font: painter.helvetica, color: rgb(0.32, 0.32, 0.36) });
+  }
+  return doc.save();
+}
+
+function invertAffine(m: Affine): Affine {
+  const det = m.a * m.d - m.b * m.c;
+  return { a: m.d / det, b: -m.b / det, c: -m.c / det, d: m.a / det, e: (m.c * m.f - m.d * m.e) / det, f: (m.b * m.e - m.a * m.f) / det };
 }

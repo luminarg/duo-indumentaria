@@ -619,3 +619,100 @@ describe("PDF con paños uno al lado del otro", () => {
     expect(pg.getHeight() / mm).toBeCloseTo(Math.max(...L.segments.map((s) => s.endMm - s.startMm)), 0);
   });
 });
+
+import { movePiece, rotatePiece, validateLayout } from "./rollEdit";
+
+describe("retoque manual del rollo", () => {
+  const garments: GarmentRequest[] = Array.from({ length: 4 }, (_, i) => ({ orderItemId: `g${i}`, sizeLabel: i % 2 ? "M" : "L", variant: "jugador" }));
+  const { prints } = buildPrintPieces({ pieces: sampleMolds(), assembly: DEFAULT_ASSEMBLY, design: defaultDesignConfig(), garments, measure: approxMeasurer });
+  const L = nest(prints, { ...DEFAULT_SETTINGS, maxSegmentLengthMm: 1600 });
+
+  it("el acomodo automático no tiene problemas", () => {
+    expect(validateLayout(L)).toEqual([]);
+  });
+  it("mover una pieza encima de otra o fuera del ancho se marca", () => {
+    const [a, b] = [0, 1];
+    const ba = bbox(L.placed[a].outer), bb = bbox(L.placed[b].outer);
+    const over = movePiece(L, a, bb.minX - ba.minX, bb.minY - ba.minY);
+    expect(validateLayout(over).some((i) => i.idx === a && /menos de/.test(i.message))).toBe(true);
+    const out = movePiece(L, a, L.settings.rollWidthMm, 0);
+    expect(validateLayout(out).some((i) => i.idx === a && /ancho/.test(i.message))).toBe(true);
+  });
+  it("girar 180° y volver deja la pieza igual", () => {
+    const r2 = rotatePiece(rotatePiece(L, 0), 0);
+    const p0 = L.placed[0].outer, p2 = r2.placed[0].outer;
+    expect(p2.length).toBe(p0.length);
+    for (let i = 0; i < p0.length; i += 7) {
+      expect(p2[i].x).toBeCloseTo(p0[i].x, 6);
+      expect(p2[i].y).toBeCloseTo(p0[i].y, 6);
+    }
+    expect(rotatePiece(L, 0).placed[0].rotation).toBe(L.placed[0].rotation === 180 ? 0 : 180);
+  });
+  it("una pieza que cruza el corte entre paños se marca", () => {
+    expect(L.segments.length).toBeGreaterThan(1);
+    const seg = L.segments[0];
+    const idx = seg.pieceIndexes[0];
+    const b = bbox(L.placed[idx].outer);
+    const moved = movePiece(L, idx, 0, seg.endMm - b.maxY + (b.maxY - b.minY) / 3);
+    const issue = validateLayout(moved).find((i) => i.idx === idx);
+    expect(issue).toBeTruthy();
+  });
+});
+
+import { mockupLayout } from "./mockup";
+import { exportMockupPdf } from "./exportPdf";
+
+describe("mockup plano", () => {
+  it("frente y espalda con sus mangas, en una página", async () => {
+    const garments: GarmentRequest[] = [{ orderItemId: "a", sizeLabel: "L", variant: "jugador", name: "PEREZ", number: "9" }];
+    const { prints } = buildPrintPieces({ pieces: sampleMolds(), assembly: DEFAULT_ASSEMBLY, design: defaultDesignConfig(), garments, measure: approxMeasurer });
+    const m = mockupLayout(prints);
+    expect(m.views.map((v) => v.title)).toEqual(["FRENTE", "ESPALDA"]);
+    for (const v of m.views) {
+      expect(v.items).toHaveLength(3); // dos mangas + cuerpo
+      expect(v.items[2].print.piece.kind === "frente" || v.items[2].print.piece.kind === "espalda").toBe(true);
+      expect(v.items.filter((it) => it.clip)).toHaveLength(2);
+    }
+    // Las vistas no se pisan: el frente termina antes de que empiece la espalda.
+    const xs = (v: (typeof m.views)[number]) => v.items.flatMap((it) => it.print.piece.outline.map((p) => it.transform.a * p.x + it.transform.c * p.y + it.transform.e));
+    expect(Math.max(...xs(m.views[0]).filter((x) => x < m.widthMm / 2 + 400))).toBeLessThan(Math.min(...xs(m.views[1])) + 400);
+    const bytes = await exportMockupPdf(m, defaultDesignConfig().background);
+    const doc = await PDFDocument.load(bytes);
+    expect(doc.getPageCount()).toBe(1);
+  });
+});
+
+import { buildContext, contextGarments } from "./contextBuild";
+import { orderContexts } from "./contexts";
+
+describe("rollo con varios pedidos", () => {
+  it("prendas de cada pedido: artículo × prenda del combo × variante", () => {
+    const ctx = orderContexts(
+      [{ id: "r1", description: "Combo", article_type_id: "t1" }],
+      [{ requirement_id: "r1", variant: "jugador" }, { requirement_id: "r1", variant: "arquero" }],
+      [{ id: "c1", article_type_id: "t1", name: "Remera", sort_order: 0 }, { id: "c2", article_type_id: "t1", name: "Short", sort_order: 1 }]
+    );
+    expect(ctx.map((c) => c.label)).toEqual(["Combo · Remera", "Combo · Short", "Combo · Remera · arquero", "Combo · Short · arquero"]);
+  });
+
+  it("dos pedidos con diseños distintos en un mismo rollo (cada pieza con su fondo)", async () => {
+    const molds = sampleMolds();
+    const itemsA = [{ id: "a1", size_id: null, size_label: "M", individual_name: "PAZ", individual_number: "5", quantity: 2, variant: "jugador", requirement_id: null }];
+    const itemsB = [{ id: "b1", size_id: null, size_label: "L", individual_name: null, individual_number: null, quantity: 1, variant: "jugador", requirement_id: null }];
+    const tpl = BUILTIN_TEMPLATES.find((t) => t.id === "rayas_horizontales")!;
+    const cfgA = defaultDesignConfig();
+    cfgA.background = { ...cfgA.background, template: { id: tpl.id, params: templateDefaults(tpl), colors: tpl.defaultColors } };
+    const cfgB = defaultDesignConfig();
+    cfgB.background = { ...cfgB.background, color: "#00AA00" };
+    const A = buildContext({ config: cfgA, pieces: molds, assembly: DEFAULT_ASSEMBLY, custom: [], garments: contextGarments(itemsA, {}, "jugador", null, "A"), measure: approxMeasurer, templateKey: "plantilla:A" });
+    const B = buildContext({ config: cfgB, pieces: molds, assembly: DEFAULT_ASSEMBLY, custom: [], garments: contextGarments(itemsB, {}, "jugador", { copy_name: false, copy_number: true }, "B"), measure: approxMeasurer, templateKey: "plantilla:B" });
+    expect(A.prints.every((p) => p.bgFile === "plantilla:A")).toBe(true);
+    expect(B.prints.every((p) => p.bgColor === "#00AA00" && !p.bgFile)).toBe(true);
+    const L = nest([...A.prints, ...B.prints], DEFAULT_SETTINGS);
+    expect(L.placed).toHaveLength(A.prints.length + B.prints.length);
+    expect(new Set(L.placed.map((p) => p.print.key)).size).toBe(L.placed.length); // claves únicas entre pedidos
+    expect(validateLayout(L)).toEqual([]);
+    const { bytes } = await exportRollPdf(L, A.design.background, { backgrounds: { "plantilla:A": await A.templatePdf! } });
+    expect((await PDFDocument.load(bytes)).getPageCount()).toBeGreaterThan(0);
+  });
+});

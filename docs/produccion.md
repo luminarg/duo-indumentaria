@@ -142,3 +142,20 @@ pasar por una Server Action.
 - "Mangas: color liso" deja las mangas de un color (útil con chevron o bandas).
 - **Plantillas propias:** dibujadas en Corel y exportadas a SVG o PDF. Colores marcadores: rojo puro #FF0000 = Color 1, verde #00FF00 = Color 2, azul #0000FF = Color 3, amarillo #FFFF00 = Color 4; los demás colores quedan fijos. Se guardan en `design_templates` (migración 030) y quedan para todos los pedidos.
 - El PDF del fondo se genera al exportar el rollo (no se guarda en Storage): el diseño guarda la plantilla, los parámetros y los colores.
+
+## Rollo con varios pedidos
+
+- Producción → **Rollo con varios pedidos**. Lista todas las prendas (pedido × artículo × prenda del combo × variante) de los pedidos en diseño, cerrados o cortando; se eligen las que tienen diseño guardado.
+- Cada prenda usa su diseño guardado (fondo, plantilla, escudo, fuentes, cuellos). El rollo se arma junto, se retoca y se exporta igual que el de un pedido.
+- Al guardar se registra qué prendas lleva (`production_layout_items`, migración 031). Un pedido pasa a sublimación cuando todas sus prendas tienen rollo, propio o compartido.
+
+## Retoque manual del rollo
+
+- En la vista del rollo: tocar una pieza la selecciona, arrastrarla la mueve, "Girar 180°" la da vuelta; flechas para correr de a 5 mm; "Deshacer".
+- Cada cambio se valida: separación entre contornos, ancho útil, paños (ninguna pieza partida) y panel de cuellos. Las piezas que no cumplen quedan en rojo y no se puede exportar hasta corregirlas.
+
+## Mockup
+
+- En el pedido, "Mockup (frente y espalda)": se elige una prenda (talle, nombre, número) y se genera la prenda armada con el mismo arte del rollo. Las mangas se muestran por la mitad, como apoyada en la mesa.
+- Se descarga en PNG (para WhatsApp/mail) o PDF vectorial, y se puede guardar en los recursos del pedido como "mockup".
+- La imagen se genera en el navegador con pdf.js (`public/pdf.worker.min.mjs`, misma versión que `pdfjs-dist`: si se actualiza el paquete, copiar el worker de `node_modules/pdfjs-dist/build/`).

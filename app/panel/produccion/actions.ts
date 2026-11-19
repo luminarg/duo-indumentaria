@@ -371,3 +371,41 @@ export async function deleteDesignTemplate(id: string) {
   const { error } = await supabase.from("design_templates").delete().eq("id", id);
   if (error) throw new Error("No se pudo borrar la plantilla: " + error.message);
 }
+
+// ── Rollo con varios pedidos ───────────────────────────────────────────────
+
+export async function saveCombinedLayout(input: {
+  pdfPath: string;
+  lengthMm: number;
+  pieceCount: number;
+  contexts: { orderId: string; requirementId: string | null; componentId: string | null; variant: "jugador" | "arquero" }[];
+  /** Pedidos que con este rollo quedan con todas sus prendas: pasan a sublimación. */
+  advanceOrderIds: string[];
+}) {
+  const user = await requireTeamMember();
+  if (!input.pdfPath || !Number.isFinite(input.lengthMm) || !input.contexts.length) throw new Error("Faltan datos del rollo");
+  const orderIds = [...new Set(input.contexts.map((c) => c.orderId))];
+  const supabase = await createClient();
+  const { data: layout, error } = await supabase
+    .from("production_layouts")
+    .insert({ order_id: null, order_ids: orderIds, length_mm: input.lengthMm, piece_count: input.pieceCount, pdf_path: input.pdfPath, created_by: user.id })
+    .select("id")
+    .single();
+  if (error) throw new Error("No se pudo registrar el rollo: " + error.message);
+  const { error: e2 } = await supabase.from("production_layout_items").insert(
+    input.contexts.map((c) => ({ layout_id: layout.id, order_id: c.orderId, requirement_id: c.requirementId || null, component_id: c.componentId || null, variant: c.variant }))
+  );
+  if (e2) throw new Error("Se guardó el rollo pero no qué prendas lleva: " + e2.message);
+  const advance = input.advanceOrderIds.filter((id) => orderIds.includes(id));
+  if (advance.length) {
+    const { error: e3 } = await supabase.from("orders").update({ status: "sublimacion_estampado", updated_at: new Date().toISOString() }).in("id", advance);
+    if (e3) throw new Error("Se guardó el rollo pero no se pudo cambiar el estado: " + e3.message);
+  }
+  for (const id of orderIds) {
+    revalidatePath(`/panel/produccion/${id}`);
+    revalidatePath(`/panel/pedidos/${id}`);
+  }
+  revalidatePath("/panel/produccion");
+  revalidatePath("/panel/pedidos");
+  return { id: layout.id as string };
+}

@@ -8,7 +8,7 @@ import { Button } from "../../../components/ui/Button";
 import { Input, Select } from "../../../components/ui/Input";
 import { approxMeasurer, buildPrintPieces, type TextMeasurer } from "@/lib/produccion/build";
 import { assemblyFromRows, garmentsFromItems, normalizeConfig, pieceFromRow, type AssemblyRow, type OrderItemRow, type PatternPieceRow } from "@/lib/produccion/db";
-import { capHeightRatio, exportRollPdf, pdfMeasurer } from "@/lib/produccion/exportPdf";
+import { capHeightRatio, exportMockupPdf, exportRollPdf, pdfMeasurer } from "@/lib/produccion/exportPdf";
 import { cssFamilyFor, usedFonts, type FontEntry } from "@/lib/produccion/fonts";
 import { addCollarPanel, collarStripCount } from "@/lib/produccion/collars";
 import { groupIntoRolls } from "@/lib/produccion/rolls";
@@ -19,6 +19,9 @@ import { rasterizeTemplate } from "@/lib/produccion/templateRaster";
 import { templateFromFile } from "@/lib/produccion/templateImport";
 import { normalizeSize } from "@/lib/produccion/rules";
 import { TemplateEditor } from "./TemplateEditor";
+import { mockupLayout } from "@/lib/produccion/mockup";
+import { pdfToPngBlob } from "@/lib/produccion/pdfRaster";
+import { uploadOrderResource } from "../../pedidos/actions";
 import { pdfPrimitives } from "@/lib/produccion/pdfImport";
 import { detectDesignPieces } from "@/lib/produccion/designDetect";
 import { DEFAULT_SETTINGS, nest } from "@/lib/produccion/nesting";
@@ -27,7 +30,9 @@ import { DEFAULT_ASSEMBLY } from "@/lib/produccion/assembly";
 import type { AnchoredElement, DesignConfig, PieceKind, RollLayout, WearerSide } from "@/lib/produccion/types";
 import { deleteDesignTemplate, listDesignTemplates, listProductionFonts, saveDesignTemplate, saveDesign, saveJob, saveJobLayout, saveLayout, signedProductionUrls } from "../actions";
 import { downloadProductionFiles, uploadFont, uploadToProduction } from "../upload";
-import { PiecePreview, RollPreview, type FontInfo } from "../Previews";
+import { PiecePreview, type FontInfo } from "../Previews";
+import { RollEditor } from "../RollEditor";
+import { validateLayout } from "@/lib/produccion/rollEdit";
 
 const SAMPLE = "prueba";
 /** Clave del fondo generado por plantilla (no es un archivo en Storage). */
@@ -60,6 +65,8 @@ export function ProductionWorkbench(props: {
   designs: DesignRow[];
   layouts: LayoutRow[];
   components?: ComponentRow[];
+  /** Prendas de este pedido que ya salieron en rollos con otros pedidos. */
+  sharedCoverage?: { requirement_id: string | null; component_id: string | null; variant: string }[];
   /** Trabajo libre (escalado para un tercero): sin pedido, sin artículos ni estados. */
   job?: { id: string; onModelChange?: (modelId: string) => void };
 }) {
@@ -93,7 +100,7 @@ export function ProductionWorkbench(props: {
   const [panoM, setPanoM] = useState(5);
   const [rolloM, setRolloM] = useState(0);
   // Cómo sale el PDF: un paño por página, o todos uno al lado del otro (como en Corel).
-  const [pdfLayout, setPdfLayout] = useState<"lado" | "paginas">("lado");
+  const [pdfLayout, setPdfLayout] = useState<"lado" | "paginas">("paginas");
   const [gapCm, setGapCm] = useState(50);
 
   const selectContext = (reqId: string, compId: string, v: "jugador" | "arquero") => {
@@ -431,6 +438,20 @@ export function ProductionWorkbench(props: {
     });
 
   async function makePdfBytes(l: RollLayout, sheetMode = true) {
+    const problems = validateLayout(l);
+    if (problems.length) throw new Error(`Hay ${problems.length} pieza(s) en rojo en el rollo: corregilas antes de exportar (${problems[0].message})`);
+    const a = await collectExportAssets();
+    const { bytes } = await exportRollPdf(
+      l,
+      designConfig.background,
+      a,
+      sheetMode && pdfLayout === "lado" && l.segments.length > 1 ? { sideBySide: { gapMm: gapCm * 10 } } : {}
+    );
+    return bytes;
+  }
+
+  /** Fondo, elementos, fuentes y plantilla que necesita el diseño para exportar. */
+  async function collectExportAssets() {
     const paths = [config.background.filePath, config.sizeIndicator.artPath, config.collars.artPath, ...config.elements.map((e) => e.filePath)].filter(Boolean) as string[];
     const missing = paths.filter((p) => !assets[p]);
     const downloaded = missing.length ? await downloadProductionFiles(missing) : {};
@@ -454,14 +475,35 @@ export function ProductionWorkbench(props: {
       if (!b) throw new Error("No se encontró una fuente del diseño. Elegila de nuevo o subila otra vez.");
       fonts[f] = b;
     }
-    const { bytes } = await exportRollPdf(
-      l,
-      designConfig.background,
-      { background: bg, elements, fonts, backgrounds },
-      sheetMode && pdfLayout === "lado" && l.segments.length > 1 ? { sideBySide: { gapMm: gapCm * 10 } } : {}
-    );
-    return bytes;
+    return { background: bg, elements, fonts, backgrounds };
   }
+
+  // Mockup plano (frente y espalda) de una prenda del pedido.
+  const [mockGarment, setMockGarment] = useState<string>("");
+  const [mockup, setMockup] = useState<{ png: Blob; url: string; pdf: Uint8Array; name: string } | null>(null);
+  const onMockup = () =>
+    run("Armando el mockup…", async () => {
+      const g = garments.find((x) => x.orderItemId === mockGarment) ?? garments[0];
+      if (!g) throw new Error("No hay prendas para mostrar.");
+      const one = buildPrintPieces({ pieces, assembly, design: designConfig, garments: [g], measure }).prints;
+      if (!one.some((p) => p.piece.kind === "frente")) throw new Error("El molde no tiene frente en ese talle.");
+      const m = mockupLayout(one);
+      const pdf = await exportMockupPdf(m, designConfig.background, await collectExportAssets(), { title: `Mockup ${g.name ?? ""} ${g.number ?? ""}`.trim() });
+      const png = await pdfToPngBlob(pdf, 2400);
+      if (mockup) URL.revokeObjectURL(mockup.url);
+      const name = `mockup-${orderId.slice(0, 8)}-${g.sizeLabel}${g.number ? "-" + g.number : ""}`;
+      setMockup({ png, url: URL.createObjectURL(png), pdf, name });
+      setMessage("Mockup listo: frente y espalda con el diseño real.");
+    });
+  const onSaveMockup = () =>
+    run("Guardando el mockup en el pedido…", async () => {
+      if (!mockup) return;
+      const fd = new FormData();
+      fd.set("file", new File([mockup.png], `${mockup.name}.png`, { type: "image/png" }));
+      fd.set("resource_type", "mockup");
+      await uploadOrderResource(orderId, fd);
+      setMessage("Mockup guardado en los recursos del pedido.");
+    });
   async function makePdf(l: RollLayout) {
     return new Blob([(await makePdfBytes(l)) as BlobPart], { type: "application/pdf" });
   }
@@ -516,7 +558,11 @@ export function ProductionWorkbench(props: {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [requirements, items, props.components]);
   const [savedKeys, setSavedKeys] = useState<Set<string>>(
-    () => new Set(layouts.filter((l) => l.variant).map((l) => ctxKey(l.requirement_id ?? "", l.component_id ?? "", l.variant!)))
+    () =>
+      new Set([
+        ...layouts.filter((l) => l.variant).map((l) => ctxKey(l.requirement_id ?? "", l.component_id ?? "", l.variant!)),
+        ...(props.sharedCoverage ?? []).map((l) => ctxKey(l.requirement_id ?? "", l.component_id ?? "", l.variant)),
+      ])
   );
   const pendingRolls = allContexts.filter((c) => !savedKeys.has(c.key));
 
@@ -649,11 +695,49 @@ export function ProductionWorkbench(props: {
             )}
           </Card>
 
+          <Card className="flex flex-col gap-3">
+            <div className="flex flex-wrap items-end gap-3">
+              <h2 className="mr-auto text-sm font-medium text-zinc-900">Mockup (frente y espalda)</h2>
+              <div className="w-64">
+                <Select label="Prenda" value={mockGarment || garments[0]?.orderItemId || ""} onChange={(e) => setMockGarment(e.target.value)}>
+                  {garments.map((g) => (
+                    <option key={g.orderItemId} value={g.orderItemId}>
+                      {g.sizeLabel}
+                      {g.name ? ` · ${g.name}` : ""}
+                      {g.number ? ` · ${g.number}` : ""}
+                    </option>
+                  ))}
+                </Select>
+              </div>
+              <Button variant="secondary" onClick={onMockup} disabled={!!busy || !garments.length || modelId === SAMPLE}>
+                Generar mockup
+              </Button>
+            </div>
+            {mockup && (
+              <div className="flex flex-col gap-2">
+                {/* eslint-disable-next-line @next/next/no-img-element */}
+                <img src={mockup.url} alt="Mockup de la prenda" className="w-full rounded border border-zinc-200" />
+                <div className="flex flex-wrap gap-2">
+                  <Button variant="secondary" onClick={() => saveBlob(mockup.png, `${mockup.name}.png`)}>Descargar PNG</Button>
+                  <Button variant="secondary" onClick={() => saveBlob(new Blob([mockup.pdf as BlobPart], { type: "application/pdf" }), `${mockup.name}.pdf`)}>
+                    Descargar PDF
+                  </Button>
+                  {!job && (
+                    <Button onClick={onSaveMockup} disabled={!!busy}>
+                      Guardar en el pedido
+                    </Button>
+                  )}
+                </div>
+                <p className="text-xs text-zinc-500">Es la misma prenda que va al rollo (mismo arte, número y nombre), vista armada. Las mangas se muestran por la mitad, como apoyada en la mesa.</p>
+              </div>
+            )}
+          </Card>
+
           <Card>
             <div className="mb-3 flex flex-wrap items-center gap-3">
               <h2 className="mr-auto text-sm font-medium text-zinc-900">Rollo</h2>
               <div className="w-28">
-                <Num label="Paños de (m)" step={0.5} value={panoM} onChange={(n) => { setPanoM(n); setLayout(null); }} />
+                <Num label="Paños de (m)" step={0.5} value={panoM} onChange={(n) => { setPanoM(n); setLayout(null); }} hint={panoM > 5.5 ? "Más de 5,5 m no entra en un JPG de 300 dpi" : undefined} />
               </div>
               <div className="w-48">
                 <Select label="PDF" value={pdfLayout} onChange={(e) => setPdfLayout(e.target.value as "lado" | "paginas")}>
@@ -720,8 +804,8 @@ export function ProductionWorkbench(props: {
                       </div>
                     );
                   })()}
-                <div className="max-h-[600px] overflow-y-auto">
-                  <RollPreview layout={layout} />
+                <div className="max-h-[700px] overflow-y-auto">
+                  <RollEditor layout={layout} onChange={setLayout} />
                 </div>
               </div>
             )}

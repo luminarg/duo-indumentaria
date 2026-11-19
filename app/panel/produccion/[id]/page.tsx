@@ -57,6 +57,9 @@ export default async function ProduccionPedidoPage({ params }: { params: Promise
         .in("article_type_id", typeIds)
     : { data: [] };
 
+  // Prendas que ya salieron en un rollo con varios pedidos.
+  const { data: sharedItems } = await supabase.from("production_layout_items").select("requirement_id, component_id, variant").eq("order_id", id);
+
   const sizeLabels = Object.fromEntries((sizes ?? []).map((s) => [s.id, s.label]));
 
   return (
@@ -85,6 +88,7 @@ export default async function ProduccionPedidoPage({ params }: { params: Promise
         designs={designs ?? []}
         layouts={layouts ?? []}
         components={components ?? []}
+        sharedCoverage={sharedItems ?? []}
       />
     </div>
   );
