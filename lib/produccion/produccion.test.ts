@@ -470,3 +470,73 @@ describe("PDF por talle (trabajos libres)", () => {
     }
   });
 });
+
+import { BUILTIN_TEMPLATES, canvasForPieces, renderTemplate, templateDefaults, markerSlot } from "./templates";
+import { templateToPdf } from "./templatePdf";
+import { templateFromFile } from "./templateImport";
+
+describe("plantillas de diseño", () => {
+  const molds = sampleMolds();
+  const base = molds.filter((m) => m.sizeLabel === "M");
+  const cv = canvasForPieces(base, DEFAULT_ASSEMBLY);
+
+  it("el lienzo cubre la prenda armada y ubica frente y espalda", () => {
+    expect(cv.widthMm).toBeGreaterThan(0);
+    const f = cv.anchors.frente!;
+    expect(f.cx).toBeCloseTo(cv.widthMm / 2, 0); // el frente va centrado (así lo espera backgroundTransform)
+    expect(f.bottom).toBeCloseTo(cv.heightMm, 0); // la base del frente es el borde inferior
+    expect(cv.anchors.espalda!.cx).toBeGreaterThan(f.cx);
+  });
+
+  it("todas las plantillas del sistema generan un PDF vectorial válido", async () => {
+    for (const t of BUILTIN_TEMPLATES) {
+      const shapes = renderTemplate({ id: t.id, params: templateDefaults(t), colors: t.defaultColors }, cv);
+      expect(shapes.length, t.id).toBeGreaterThan(0);
+      const bytes = await templateToPdf(shapes, cv.widthMm, cv.heightMm);
+      const doc = await PDFDocument.load(bytes);
+      expect(doc.getPage(0).getWidth() / (72 / 25.4)).toBeCloseTo(cv.widthMm, 0);
+    }
+  });
+
+  it("la plantilla se recorta de cada pieza y escala con el talle (rayas que coinciden)", async () => {
+    const t = BUILTIN_TEMPLATES.find((x) => x.id === "rayas_verticales")!;
+    const spec = { id: t.id, params: templateDefaults(t), colors: t.defaultColors };
+    const design = defaultDesignConfig();
+    design.baseSizeLabel = "M";
+    design.background = { ...design.background, mode: "lienzo", filePath: "tpl", widthMm: cv.widthMm, heightMm: cv.heightMm, scaling: "proporcional", color: spec.colors[0], template: spec, sleeveColor: "#FF0000" };
+    const garments: GarmentRequest[] = [{ orderItemId: "a", sizeLabel: "S", variant: "jugador" }, { orderItemId: "b", sizeLabel: "L", variant: "jugador" }];
+    const { prints } = buildPrintPieces({ pieces: molds, assembly: DEFAULT_ASSEMBLY, design, garments, measure: approxMeasurer });
+    const sleeve = prints.find((p) => p.piece.kind === "manga_izq")!;
+    expect(sleeve.bgColor).toBe("#FF0000"); // mangas lisas
+    expect(sleeve.backgroundClip).toEqual([]);
+    const frontS = prints.find((p) => p.piece.kind === "frente" && p.piece.sizeLabel === "S")!;
+    const frontL = prints.find((p) => p.piece.kind === "frente" && p.piece.sizeLabel === "L")!;
+    // Escala del lienzo = relación de anchos de frente (proporcional).
+    expect(frontL.backgroundTransform.a / frontS.backgroundTransform.a).toBeCloseTo(gridUnit(frontL.piece) / gridUnit(frontS.piece), 3);
+    const bg = await templateToPdf(renderTemplate(spec, cv), cv.widthMm, cv.heightMm);
+    const L = nest(prints, DEFAULT_SETTINGS);
+    const { bytes } = await exportRollPdf(L, design.background, { backgrounds: { tpl: bg } });
+    expect((await PDFDocument.load(bytes)).getPageCount()).toBeGreaterThan(0);
+  });
+
+  it("plantilla propia desde SVG: colores marcadores → Color 1–4, el resto fijo", async () => {
+    expect(markerSlot("#FF0000")).toBe(0);
+    expect(markerSlot("#00ff00")).toBe(1);
+    expect(markerSlot("#123456")).toBeNull();
+    const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="200mm" height="100mm" viewBox="0 0 200 100">
+      <style>.fil0 {fill:#0000FF} .fil1 {fill:#ABCDEF}</style>
+      <rect x="0" y="0" width="200" height="100" fill="#FF0000"/>
+      <g fill="#00FF00"><path d="M10 10 L60 10 L60 60 Z"/></g>
+      <path class="fil0" d="M100 10 L150 10 L150 60 Z"/>
+      <path class="fil1" d="M160 10 L190 10 L190 40 Z"/>
+      <path d="M0 0 L10 0" fill="none" stroke="#000"/>
+    </svg>`;
+    const t = await templateFromFile("Prueba", { svg });
+    expect(t.shapes).toHaveLength(4);
+    expect(t.slots).toBe(3);
+    expect(t.shapes.map((s) => s.slot ?? s.color)).toEqual([0, 1, 2, "#ABCDEF"]);
+    expect(t.aspect).toBeCloseTo(0.5, 2);
+    const shapes = renderTemplate({ id: "custom:x", params: { ajuste: "estirar", zoom: 100, subir: 0 }, colors: ["#111111", "#222222", "#333333"] }, cv, [{ ...t, id: "x" }]);
+    expect(shapes.filter((s) => s.kind === "poly").map((s) => (s as { color: string }).color).slice(1)).toEqual(["#111111", "#222222", "#333333", "#ABCDEF"]);
+  });
+});

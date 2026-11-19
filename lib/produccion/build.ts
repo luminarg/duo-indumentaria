@@ -236,6 +236,9 @@ export function buildPrintPieces({ pieces, assembly, design, garments, measure }
           bgClip = []; // sin arte para esta pieza: solo color de fondo
         }
       }
+      // Mangas de color liso: sin el fondo, solo el color.
+      const solidSleeve = !!design.background.sleeveColor && (piece.kind === "manga_izq" || piece.kind === "manga_der");
+      if (solidSleeve) bgClip = [];
       prints.push({
         key: `${g.orderItemId}:${piece.id}`,
         piece,
@@ -243,8 +246,8 @@ export function buildPrintPieces({ pieces, assembly, design, garments, measure }
         sizeGroup: group,
         backgroundTransform: bgT,
         backgroundClip: bgClip,
-        bgFile: design.background.filePath ?? null,
-        bgColor: design.background.color ?? null,
+        bgFile: solidSleeve ? null : (design.background.filePath ?? null),
+        bgColor: solidSleeve ? design.background.sleeveColor! : (design.background.color ?? null),
         elements,
         texts,
         boxes,

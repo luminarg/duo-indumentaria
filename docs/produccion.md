@@ -133,3 +133,12 @@ pasar por una Server Action.
 - Cantidad de tiras = prendas ÷ cuellos por tira (por defecto 3: 30 remeras → 10 tiras), redondeado para arriba, más las "tiras de más" que se pidan.
 - Color: el de la tira o, si se deja vacío, el color de fondo del diseño. Se puede subir un PDF (rayas, textura) que se repite a lo largo de la tira, a su alto.
 - Si el panel es más largo que un tramo, sigue en el próximo cortando siempre entre tiras.
+
+## Plantillas de diseño (sin Corel)
+
+- En el pedido, "Tipo de diseño" → **Plantilla del sistema**. Se elige una plantilla, sus medidas (en mm del talle base) y hasta 4 colores.
+- Las formas se generan sobre la **prenda armada** (frente, espalda y mangas en su lugar, como el PowerClip): cada pieza se recorta de ahí, así las rayas coinciden en las costuras. Con "Se agranda en proporción", cada talle escala el diseño con su ancho.
+- Plantillas del sistema: liso; rayas verticales, horizontales y diagonales; banda diagonal; franja en el pecho; chevron (también en la espalda); degradé (2 o 3 colores, sombreado real del PDF); puntos degradé (halftone); triángulos low poly; rombos (argyle); hexágonos; manchas (camuflado).
+- "Mangas: color liso" deja las mangas de un color (útil con chevron o bandas).
+- **Plantillas propias:** dibujadas en Corel y exportadas a SVG o PDF. Colores marcadores: rojo puro #FF0000 = Color 1, verde #00FF00 = Color 2, azul #0000FF = Color 3, amarillo #FFFF00 = Color 4; los demás colores quedan fijos. Se guardan en `design_templates` (migración 030) y quedan para todos los pedidos.
+- El PDF del fondo se genera al exportar el rollo (no se guarda en Storage): el diseño guarda la plantilla, los parámetros y los colores.

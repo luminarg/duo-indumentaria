@@ -11,6 +11,8 @@ export type Pt = { x: number; y: number };
 export type Poly = Pt[]; // polígono cerrado (el último punto no repite el primero)
 export type BBox = { minX: number; minY: number; maxX: number; maxY: number };
 
+import type { TemplateSpec } from "./templates";
+
 export type PieceKind = "frente" | "espalda" | "manga_izq" | "manga_der" | "otra";
 
 export type PatternPiece = {
@@ -181,6 +183,10 @@ export type BackgroundRule = {
   scaling: "proporcional" | "fijo";
   /** Color liso si no hay archivo. */
   color?: string | null;
+  /** Plantilla de fondo hecha en el sistema (el PDF del lienzo se genera al exportar). */
+  template?: TemplateSpec | null;
+  /** Mangas de un color liso (sin el fondo). */
+  sleeveColor?: string | null;
 };
 
 /**

@@ -163,10 +163,27 @@ export function flattenPathD(d: string, curveSteps = 16): { points: Pt[]; closed
 }
 
 /** Lee un SVG (de Corel u otro programa) y devuelve primitivas en mm. */
-export function svgPrimitives(svg: string): { prim: Primitives; notes: string[] } {
+export function svgPrimitives(svg: string, opts: { withFill?: boolean } = {}): { prim: Primitives; notes: string[] } {
   const notes: string[] = [];
   const prim: Primitives = { subpaths: [], texts: [] };
   const stack: M[] = [I];
+  // Relleno (solo para plantillas): atributo, style o clase CSS (Corel exporta
+  // con clases .fil0 {fill:#…}). Se hereda de los grupos.
+  const classFill = new Map<string, string>();
+  if (opts.withFill) {
+    for (const m of svg.matchAll(/\.([\w-]+)\s*\{([^}]*)\}/g)) {
+      const f = m[2].match(/fill:\s*([^;}\s]+)/i)?.[1];
+      if (f) classFill.set(m[1], f);
+    }
+  }
+  const fillStack: (string | null)[] = ["#000000"];
+  const fillOf = (a: Record<string, string>, inherited: string | null): string | null => {
+    let f: string | undefined = a.style?.match(/fill:\s*([^;]+)/i)?.[1]?.trim() ?? a.fill;
+    if (!f && a.class) for (const c of a.class.split(/\s+/)) if (classFill.has(c)) f = classFill.get(c);
+    if (!f || f === "inherit") return inherited;
+    if (f === "none" || f.startsWith("url(")) return null;
+    return normalizeColor(f);
+  };
   let root: M | null = null;
   let textCtx: { m: M; x: number; y: number; size: number; buf: string } | null = null;
 
@@ -181,7 +198,10 @@ export function svgPrimitives(svg: string): { prim: Primitives; notes: string[] 
     const name = r[2].replace(/^\w+:/, "").toLowerCase();
     const selfClose = r[4] === "/";
     if (closing) {
-      if (name === "g" || name === "svg" || name === "a" || name === "symbol") stack.pop();
+      if (name === "g" || name === "svg" || name === "a" || name === "symbol") {
+        stack.pop();
+        if (fillStack.length > 1) fillStack.pop();
+      }
       if (name === "text" && textCtx) {
         const t = textCtx.buf.replace(/\s+/g, " ").trim();
         if (t) {
@@ -210,10 +230,14 @@ export function svgPrimitives(svg: string): { prim: Primitives; notes: string[] 
       root = [sx, 0, 0, sy, tx, ty];
       m = mul(root, parseTransform(a.transform));
       stack.push(m);
+      fillStack.push(fillOf(a, fillStack[fillStack.length - 1]));
       continue;
     }
     if (name === "g" || name === "svg" || name === "a" || name === "symbol") {
-      if (!selfClose) stack.push(m);
+      if (!selfClose) {
+        stack.push(m);
+        fillStack.push(fillOf(a, fillStack[fillStack.length - 1]));
+      }
       continue;
     }
     if (name === "defs" || name === "clippath" || name === "mask") {
@@ -225,8 +249,13 @@ export function svgPrimitives(svg: string): { prim: Primitives; notes: string[] 
       continue;
     }
 
+    const fill = opts.withFill ? fillOf(a, fillStack[fillStack.length - 1]) : undefined;
     const push = (pts: Pt[], closed: boolean) =>
-      prim.subpaths.push({ points: pts.map((p) => ap(m, p.x, p.y)), closed });
+      prim.subpaths.push(
+        opts.withFill
+          ? { points: pts.map((p) => ap(m, p.x, p.y)), closed: closed || !!fill, fill }
+          : { points: pts.map((p) => ap(m, p.x, p.y)), closed }
+      );
 
     if (name === "path" && a.d) {
       for (const sp of flattenPathD(a.d)) push(sp.points, sp.closed);
@@ -477,4 +506,22 @@ export function importSvg(svgText: string): ImportResult {
   const { prim, notes } = svgPrimitives(svgText);
   const res = piecesFromPrimitives(prim);
   return { ...res, notes: [...notes, ...res.notes] };
+}
+
+/** "#abc", "#aabbcc", "rgb(…)" o nombres básicos → "#AABBCC". */
+function normalizeColor(f: string): string | null {
+  const v = f.trim().toLowerCase();
+  if (v.startsWith("#")) {
+    const h = v.slice(1);
+    const full = h.length === 3 ? h.split("").map((x) => x + x).join("") : h.slice(0, 6);
+    return /^[0-9a-f]{6}$/.test(full) ? "#" + full.toUpperCase() : null;
+  }
+  const m = v.match(/rgb\(\s*([\d.]+)%?\s*,\s*([\d.]+)%?\s*,\s*([\d.]+)%?/);
+  if (m) {
+    const pct = v.includes("%");
+    const c = [m[1], m[2], m[3]].map((x) => Math.round(pct ? (Number(x) * 255) / 100 : Number(x)));
+    return "#" + c.map((x) => Math.min(255, x).toString(16).padStart(2, "0")).join("").toUpperCase();
+  }
+  const named: Record<string, string> = { black: "#000000", white: "#FFFFFF", red: "#FF0000", lime: "#00FF00", green: "#008000", blue: "#0000FF", yellow: "#FFFF00" };
+  return named[v] ?? null;
 }

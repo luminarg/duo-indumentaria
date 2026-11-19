@@ -29,9 +29,14 @@ export function PiecePreview({
   bgColor,
   height = 260,
   fontInfo = {},
+  bgImage,
+  showGrid = true,
 }: {
   print: PrintPiece;
   fontInfo?: FontInfo;
+  /** Imagen del lienzo de la plantilla (se recorta por la pieza). */
+  bgImage?: { href: string; widthMm: number; heightMm: number } | null;
+  showGrid?: boolean;
   safeMarginMm: number;
   contourMm: number;
   bgColor?: string | null;
@@ -60,8 +65,21 @@ export function PiecePreview({
           </clipPath>
         </defs>
         {outer && <path d={pathD(outer)} fill="#111" />}
-        <path d={pathD(piece.outline)} fill={bgColor || "#fafafa"} />
-        <g clipPath={`url(#${clipId})`} stroke="#f97316" strokeOpacity={0.35} strokeWidth={1}>
+        <path d={pathD(piece.outline)} fill={print.bgColor || bgColor || "#fafafa"} />
+        {bgImage && !(print.backgroundClip && print.backgroundClip.length === 0) && (
+          <g clipPath={`url(#${clipId})`}>
+            <image
+              href={bgImage.href}
+              x={0}
+              y={0}
+              width={bgImage.widthMm}
+              height={bgImage.heightMm}
+              preserveAspectRatio="none"
+              transform={`matrix(${print.backgroundTransform.a} ${print.backgroundTransform.b} ${print.backgroundTransform.c} ${print.backgroundTransform.d} ${print.backgroundTransform.e} ${print.backgroundTransform.f})`}
+            />
+          </g>
+        )}
+        <g clipPath={`url(#${clipId})`} stroke="#f97316" strokeOpacity={showGrid ? 0.35 : 0} strokeWidth={1}>
           {lines.map((x) => (
             <line key={`v${x}`} x1={x} y1={b.minY} x2={x} y2={b.maxY} />
           ))}

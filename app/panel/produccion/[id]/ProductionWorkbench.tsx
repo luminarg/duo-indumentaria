@@ -13,17 +13,25 @@ import { cssFamilyFor, usedFonts, type FontEntry } from "@/lib/produccion/fonts"
 import { addCollarPanel, collarStripCount } from "@/lib/produccion/collars";
 import { groupIntoRolls } from "@/lib/produccion/rolls";
 import { sizeSheets } from "@/lib/produccion/sizeSheets";
+import { BUILTIN_TEMPLATES, canvasForPieces, renderTemplate, templateDefaults, type CanvasInfo, type CustomTemplate } from "@/lib/produccion/templates";
+import { templateToPdf } from "@/lib/produccion/templatePdf";
+import { rasterizeTemplate } from "@/lib/produccion/templateRaster";
+import { templateFromFile } from "@/lib/produccion/templateImport";
+import { normalizeSize } from "@/lib/produccion/rules";
+import { TemplateEditor } from "./TemplateEditor";
 import { pdfPrimitives } from "@/lib/produccion/pdfImport";
 import { detectDesignPieces } from "@/lib/produccion/designDetect";
 import { DEFAULT_SETTINGS, nest } from "@/lib/produccion/nesting";
 import { sampleMolds } from "@/lib/produccion/sampleMolds";
 import { DEFAULT_ASSEMBLY } from "@/lib/produccion/assembly";
 import type { AnchoredElement, DesignConfig, PieceKind, RollLayout, WearerSide } from "@/lib/produccion/types";
-import { listProductionFonts, saveDesign, saveJob, saveJobLayout, saveLayout, signedProductionUrls } from "../actions";
+import { deleteDesignTemplate, listDesignTemplates, listProductionFonts, saveDesignTemplate, saveDesign, saveJob, saveJobLayout, saveLayout, signedProductionUrls } from "../actions";
 import { downloadProductionFiles, uploadFont, uploadToProduction } from "../upload";
 import { PiecePreview, RollPreview, type FontInfo } from "../Previews";
 
 const SAMPLE = "prueba";
+/** Clave del fondo generado por plantilla (no es un archivo en Storage). */
+const TEMPLATE_KEY = "plantilla:generada";
 const ADULT_ORDER = ["XXS", "XS", "S", "M", "L", "XL", "2XL", "XXL", "3XL", "XXXL", "4XL", "5XL"];
 const MM_PER_PT = 25.4 / 72;
 
@@ -167,6 +175,83 @@ export function ProductionWorkbench(props: {
   );
 
   const component = componentsFor(requirementId).find((c) => c.id === componentId) ?? null;
+  // Plantillas: lienzo de la prenda armada en el talle base, formas e imagen de vista previa.
+  const [customTemplates, setCustomTemplates] = useState<CustomTemplate[]>([]);
+  useEffect(() => {
+    listDesignTemplates().then(setCustomTemplates).catch(() => setCustomTemplates([]));
+  }, []);
+  const baseLabel = useMemo(() => {
+    const has = (l?: string | null) => !!l && pieces.some((p) => normalizeSize(p.sizeLabel) === normalizeSize(l));
+    const modelBase = models.find((m) => m.id === modelId)?.base_size_label;
+    if (has(config.baseSizeLabel)) return config.baseSizeLabel;
+    if (has(modelBase)) return modelBase!;
+    return pieces[0]?.sizeLabel ?? config.baseSizeLabel;
+  }, [pieces, config.baseSizeLabel, models, modelId]);
+  const canvas: CanvasInfo = useMemo(
+    () => canvasForPieces(pieces.filter((p) => normalizeSize(p.sizeLabel) === normalizeSize(baseLabel)), assembly),
+    [pieces, baseLabel, assembly]
+  );
+  const tpl = config.background.template ?? null;
+  const tplShapes = useMemo(() => (tpl ? renderTemplate(tpl, canvas, customTemplates) : null), [tpl, canvas, customTemplates]);
+  const [tplImage, setTplImage] = useState<{ href: string; widthMm: number; heightMm: number } | null>(null);
+  useEffect(() => {
+    let alive = true;
+    Promise.resolve().then(() => {
+      if (!alive) return;
+      setTplImage(tplShapes ? { href: rasterizeTemplate(tplShapes, canvas.widthMm, canvas.heightMm), widthMm: canvas.widthMm, heightMm: canvas.heightMm } : null);
+    });
+    return () => {
+      alive = false;
+    };
+  }, [tplShapes, canvas]);
+  // Con plantilla, el fondo es un lienzo continuo generado por el sistema.
+  const designConfig: DesignConfig = useMemo(
+    () =>
+      tpl
+        ? {
+            ...config,
+            baseSizeLabel: baseLabel,
+            background: {
+              ...config.background,
+              mode: "lienzo",
+              pieces: undefined,
+              filePath: TEMPLATE_KEY,
+              widthMm: canvas.widthMm,
+              heightMm: canvas.heightMm,
+              color: tpl.colors[0] ?? config.background.color,
+            },
+          }
+        : config,
+    [config, tpl, baseLabel, canvas]
+  );
+
+  const onTemplateUpload = (file: File, name: string) =>
+    run("Leyendo plantilla…", async () => {
+      const isPdf = /\.pdf$/i.test(file.name) || file.type === "application/pdf";
+      const t = await templateFromFile(name, isPdf ? { pdf: new Uint8Array(await file.arrayBuffer()) } : { svg: await file.text() });
+      const { id } = await saveDesignTemplate(t);
+      const saved = { ...t, id };
+      setCustomTemplates((list) => [...list, saved]);
+      const keep = config.background.template?.colors ?? [];
+      update((c) => ({
+        ...c,
+        background: {
+          ...c.background,
+          template: { id: `custom:${id}`, params: { ajuste: "cubrir", zoom: 100, subir: 0 }, colors: Array.from({ length: Math.max(1, t.slots) }, (_, i) => keep[i] ?? ["#0F2C5C", "#1EA7E1", "#FFFFFF", "#C8102E"][i]) },
+        },
+      }));
+      setMessage(`Plantilla «${t.name}» guardada: ${t.shapes.length} formas, ${t.slots} ${t.slots === 1 ? "color" : "colores"} para cambiar.`);
+    });
+  const onTemplateDelete = (id: string) =>
+    run("Borrando plantilla…", async () => {
+      await deleteDesignTemplate(id);
+      setCustomTemplates((list) => list.filter((t) => t.id !== id));
+      if (config.background.template?.id === `custom:${id}`) {
+        const def = BUILTIN_TEMPLATES[0];
+        update((c) => ({ ...c, background: { ...c.background, template: { id: def.id, params: templateDefaults(def), colors: [...def.defaultColors] } } }));
+      }
+    });
+
   const garments = useMemo(() => {
     const filtered = requirementId ? items.filter((i) => i.requirement_id === requirementId) : items;
     return garmentsFromItems(filtered, sizeLabels)
@@ -176,8 +261,8 @@ export function ProductionWorkbench(props: {
   }, [items, requirementId, sizeLabels, variant, component]);
 
   const build = useMemo(
-    () => buildPrintPieces({ pieces, assembly, design: config, garments, measure }),
-    [pieces, assembly, config, garments, measure]
+    () => buildPrintPieces({ pieces, assembly, design: designConfig, garments, measure }),
+    [pieces, assembly, designConfig, garments, measure]
   );
 
   const countBySize = useMemo(() => {
@@ -339,7 +424,7 @@ export function ProductionWorkbench(props: {
       if (!build.prints.length) throw new Error("No hay piezas para armar: revisá talles y moldes.");
       if (!(panoM >= 1)) throw new Error("El largo del paño tiene que ser de al menos 1 m.");
       const roll = nest(build.prints, { ...DEFAULT_SETTINGS, maxSegmentLengthMm: panoM * 1000 });
-      setLayout(addCollarPanel(roll, config.collars, garments.length, config.background.color));
+      setLayout(addCollarPanel(roll, config.collars, garments.length, designConfig.background.color));
     });
 
   async function makePdfBytes(l: RollLayout) {
@@ -351,7 +436,12 @@ export function ProductionWorkbench(props: {
     const elements: Record<string, Uint8Array> = {};
     for (const e of config.elements) if (e.filePath && all[e.filePath]) elements[e.filePath] = all[e.filePath];
     for (const p of [config.sizeIndicator.artPath, config.collars.artPath]) if (p && all[p]) elements[p] = all[p];
-    const bg = config.background.filePath ? all[config.background.filePath] : null;
+    let bg = config.background.filePath ? all[config.background.filePath] : null;
+    const backgrounds: Record<string, Uint8Array> = {};
+    if (tplShapes) {
+      bg = await templateToPdf(tplShapes, canvas.widthMm, canvas.heightMm);
+      backgrounds[TEMPLATE_KEY] = bg;
+    }
     const fonts: Record<string, Uint8Array> = {};
     const wanted = usedFonts(config);
     const missingFonts = wanted.filter((f) => !fontBytes[f]);
@@ -361,7 +451,7 @@ export function ProductionWorkbench(props: {
       if (!b) throw new Error("No se encontró una fuente del diseño. Elegila de nuevo o subila otra vez.");
       fonts[f] = b;
     }
-    const { bytes } = await exportRollPdf(l, config.background, { background: bg, elements, fonts });
+    const { bytes } = await exportRollPdf(l, designConfig.background, { background: bg, elements, fonts, backgrounds });
     return bytes;
   }
   async function makePdf(l: RollLayout) {
@@ -520,7 +610,8 @@ export function ProductionWorkbench(props: {
       )}
 
       <div className="grid gap-6 lg:grid-cols-[380px_1fr]">
-        <DesignForm config={config} update={update} onBackground={onBackground} onElementFile={onElementFile} onIndicatorFile={onIndicatorFile} fonts={fontList} onFontFile={onFontFile} onCollarFile={onCollarFile} garmentCount={garments.length} />
+        <DesignForm config={config} update={update} onBackground={onBackground} onElementFile={onElementFile} onIndicatorFile={onIndicatorFile} fonts={fontList} onFontFile={onFontFile} onCollarFile={onCollarFile} garmentCount={garments.length}
+          template={{ canvas, custom: customTemplates, onUpload: onTemplateUpload, onDelete: onTemplateDelete }} />
 
         <div className="flex flex-col gap-4">
           <Card>
@@ -533,7 +624,7 @@ export function ProductionWorkbench(props: {
                 {previewBySize.map(({ size, prints }) => (
                   <div key={size} className="flex gap-2 rounded-md border border-zinc-200 p-2">
                     {prints.map((p) => (
-                      <PiecePreview key={p.key} print={p} fontInfo={fontInfo} safeMarginMm={config.safeMarginMm} contourMm={DEFAULT_SETTINGS.contourMm} bgColor={config.background.color} height={170} />
+                      <PiecePreview key={p.key} print={p} fontInfo={fontInfo} bgImage={tplImage} safeMarginMm={config.safeMarginMm} contourMm={DEFAULT_SETTINGS.contourMm} bgColor={config.background.color} height={170} />
                     ))}
                   </div>
                 ))}
@@ -677,6 +768,7 @@ function DesignForm({
   onFontFile,
   onCollarFile,
   garmentCount,
+  template,
 }: {
   config: DesignConfig;
   update: (fn: (c: DesignConfig) => DesignConfig) => void;
@@ -687,6 +779,7 @@ function DesignForm({
   onFontFile: (f: File) => Promise<string | null>;
   onCollarFile: (f: File) => void;
   garmentCount: number;
+  template: { canvas: CanvasInfo; custom: CustomTemplate[]; onUpload: (f: File, name: string) => void; onDelete: (id: string) => void };
 }) {
   const fontSelect = (label: string, value: string | undefined, set: (font: string) => void) => (
     <FontSelect label={label} value={value} fonts={fonts} onChange={set} onUpload={async (f) => { const p = await onFontFile(f); if (p) set(p); }} />
@@ -702,19 +795,45 @@ function DesignForm({
       <Card className="flex flex-col gap-3">
         <h2 className="text-sm font-medium text-zinc-900">Diseño</h2>
         <Select
-          label="Tipo de archivo"
-          value={config.background.mode}
-          onChange={(e) => update((c) => ({ ...c, background: { ...c.background, mode: e.target.value as "piezas" | "lienzo", pieces: undefined, filePath: null } }))}
+          label="Tipo de diseño"
+          value={config.background.template ? "plantilla" : config.background.mode}
+          onChange={(e) => {
+            const v = e.target.value;
+            if (v === "plantilla") {
+              const def = BUILTIN_TEMPLATES.find((t) => t.id === "rayas_verticales") ?? BUILTIN_TEMPLATES[0];
+              update((c) => ({
+                ...c,
+                background: { ...c.background, template: { id: def.id, params: templateDefaults(def), colors: [...def.defaultColors] }, sleeveColor: null, scaling: "proporcional" },
+              }));
+              return;
+            }
+            update((c) => ({ ...c, background: { ...c.background, mode: v as "piezas" | "lienzo", pieces: undefined, filePath: null, template: null, sleeveColor: null } }));
+          }}
         >
-          <option value="piezas">Diseño sobre las piezas de un talle</option>
-          <option value="lienzo">Fondo continuo (rayas, trama) para recortar</option>
+          <option value="piezas">Diseño sobre las piezas de un talle (Corel)</option>
+          <option value="lienzo">Fondo continuo (rayas, trama) para recortar (Corel)</option>
+          <option value="plantilla">Plantilla del sistema (sin Corel)</option>
         </Select>
+        {config.background.template && (
+          <TemplateEditor
+            spec={config.background.template}
+            onChange={(spec) => update((c) => ({ ...c, background: { ...c.background, template: spec } }))}
+            canvas={template.canvas}
+            custom={template.custom}
+            onUpload={template.onUpload}
+            onDeleteCustom={template.onDelete}
+            sleeveColor={config.background.sleeveColor}
+            onSleeveColor={(sc) => update((c) => ({ ...c, background: { ...c.background, sleeveColor: sc } }))}
+          />
+        )}
+        {!config.background.template && (
         <label className="text-xs font-medium text-zinc-500">
           {config.background.mode === "piezas"
             ? "PDF de Corel con las piezas ya diseñadas, a escala real"
             : `PDF del fondo, dibujado sobre el talle ${config.baseSizeLabel}`}
           <input type="file" accept="application/pdf" className="mt-1 block w-full text-sm" onChange={(e) => e.target.files?.[0] && onBackground(e.target.files[0])} />
         </label>
+        )}
         {config.background.filePath && config.background.mode === "piezas" && (
           <p className="text-xs text-zinc-500">
             Hecho sobre el talle {config.baseSizeLabel}. Piezas reconocidas: {Object.keys(config.background.pieces ?? {}).map((k) => PIECE_OPTIONS.find((o) => o.value === k)?.label.toLowerCase() ?? k).join(", ") || "ninguna"}. Cada talle toma el arte de su pieza, escalado en proporción.
@@ -734,12 +853,12 @@ function DesignForm({
             <option value="proporcional">Se agranda en proporción</option>
             <option value="fijo">Mantiene el tamaño</option>
           </Select>
-          <Input
+          {!config.background.template && <Input
             label="Color de fondo"
             type="color"
             value={config.background.color || "#ffffff"}
             onChange={(e) => update((c) => ({ ...c, background: { ...c.background, color: e.target.value } }))}
-          />
+          />}
         </div>
       </Card>
 

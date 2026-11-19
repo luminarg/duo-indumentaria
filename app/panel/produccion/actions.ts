@@ -5,6 +5,7 @@ import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import type { DesignConfig, PieceKind } from "@/lib/produccion/types";
 import { FONT_FOLDER, fontNameFromPath, fontSlug, type FontEntry } from "@/lib/produccion/fonts";
+import type { CustomTemplate } from "@/lib/produccion/templates";
 
 // Archivos del módulo (moldes, fondos, escudos, PDFs de rollo) en el bucket
 // privado "production-files": se suben con el cliente admin y se leen con
@@ -54,7 +55,7 @@ export async function listProductionFonts(): Promise<FontEntry[]> {
   const admin = createAdminClient();
   const { data, error } = await admin.storage.from(BUCKET).list(FONT_FOLDER, { limit: 500, sortBy: { column: "name", order: "asc" } });
   if (error) throw new Error("No se pudieron leer las fuentes: " + error.message);
-  return (data ?? [])
+  return (Array.isArray(data) ? data : [])
     .filter((f) => /\.(ttf|otf)$/i.test(f.name))
     .map((f) => {
       const path = `${FONT_FOLDER}/${f.name}`;
@@ -338,4 +339,35 @@ export async function saveJobLayout(input: { jobId: string; pdfPath: string; len
   });
   if (error) throw new Error("No se pudo registrar el rollo: " + error.message);
   revalidatePath(`/panel/produccion/trabajos/${input.jobId}`);
+}
+
+// ── Plantillas de diseño subidas ───────────────────────────────────────────
+
+export async function listDesignTemplates(): Promise<CustomTemplate[]> {
+  await requireTeamMember();
+  const supabase = await createClient();
+  const { data, error } = await supabase.from("design_templates").select("id, name, category, aspect, slots, shapes").order("created_at", { ascending: true });
+  if (error) throw new Error("No se pudieron leer las plantillas: " + error.message);
+  return (data ?? []).map((t) => ({ ...t, aspect: Number(t.aspect) })) as CustomTemplate[];
+}
+
+export async function saveDesignTemplate(t: Omit<CustomTemplate, "id">): Promise<{ id: string }> {
+  const user = await requireTeamMember();
+  if (!t.name?.trim()) throw new Error("Falta el nombre de la plantilla");
+  if (!Array.isArray(t.shapes) || !t.shapes.length) throw new Error("La plantilla no tiene formas");
+  const supabase = await createClient();
+  const { data, error } = await supabase
+    .from("design_templates")
+    .insert({ name: t.name.trim(), category: t.category || "Mis plantillas", aspect: t.aspect, slots: t.slots, shapes: t.shapes, created_by: user.id })
+    .select("id")
+    .single();
+  if (error) throw new Error("No se pudo guardar la plantilla: " + error.message);
+  return { id: data.id as string };
+}
+
+export async function deleteDesignTemplate(id: string) {
+  await requireTeamMember();
+  const supabase = await createClient();
+  const { error } = await supabase.from("design_templates").delete().eq("id", id);
+  if (error) throw new Error("No se pudo borrar la plantilla: " + error.message);
 }
