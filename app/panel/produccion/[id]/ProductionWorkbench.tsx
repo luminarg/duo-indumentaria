@@ -844,6 +844,23 @@ function DesignForm({
             Lienzo de {config.background.widthMm.toFixed(0)} × {config.background.heightMm.toFixed(0)} mm. Su borde inferior, al centro, va en la línea de base del frente.
           </p>
         )}
+        {!config.background.template && config.background.mode === "piezas" && (
+          <Select
+            label="Llevar el diseño a cada talle"
+            value={config.background.fit ?? "ajustar"}
+            onChange={(e) => update((c) => ({ ...c, background: { ...c.background, fit: e.target.value as "ajustar" | "ancho" } }))}
+          >
+            <option value="ajustar">Ajustar al ancho y al largo de cada pieza (recomendado)</option>
+            <option value="ancho">Proporcional por el ancho (no deforma)</option>
+          </Select>
+        )}
+        {!config.background.template && config.background.mode === "piezas" && (
+          <p className="text-xs text-zinc-500">
+            {(config.background.fit ?? "ajustar") === "ajustar"
+              ? "El arte cubre cada pieza entera. Lo que venga dibujado en el diseño (escudo, logos) se estira un poco en los talles extremos: cargalos aparte en «Escudo y elementos» y quedan perfectos."
+              : "No deforma nada, pero los talles no crecen igual a lo largo: puede faltar arte abajo en talles chicos o cortarse en los grandes."}
+          </p>
+        )}
         <div className="grid grid-cols-2 gap-3">
           <Select
             label="Al cambiar de talle"

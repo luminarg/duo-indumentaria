@@ -187,6 +187,15 @@ export type BackgroundRule = {
   template?: TemplateSpec | null;
   /** Mangas de un color liso (sin el fondo). */
   sleeveColor?: string | null;
+  /**
+   * Modo "piezas": cómo se lleva el arte a otro talle.
+   * ajustar: al ancho Y al largo de cada pieza (el arte cubre la pieza entera;
+   *   lo que esté dentro del diseño se deforma un poco: escudo y sponsors
+   *   conviene cargarlos aparte, que los ubica la grilla sin deformar).
+   * ancho: en proporción por el ancho (no deforma, pero puede faltar o
+   *   sobrar arte abajo, porque los talles no crecen igual a lo largo).
+   */
+  fit?: "ajustar" | "ancho";
 };
 
 /**

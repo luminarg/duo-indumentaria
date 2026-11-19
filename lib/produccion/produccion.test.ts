@@ -6,7 +6,7 @@ import { defaultDesignConfig } from "./defaults";
 import { exportRollPdf, splitSegments } from "./exportPdf";
 import { apply, area, areaOutside, bbox, compose, minDistance, offset, rectPoly, spanAtY } from "./geometry";
 import { DEFAULT_SETTINGS, nest } from "./nesting";
-import { gridUnit, placeElement, sizeGroupOf } from "./rules";
+import { gridUnit, placeElement, shoulderTop, sizeGroupOf } from "./rules";
 import { sampleMolds } from "./sampleMolds";
 import type { GarmentRequest, PatternPiece } from "./types";
 
@@ -304,7 +304,7 @@ describe("diseño hecho sobre un talle", () => {
     const bb = bbox(base.outline);
     // La pieza M está en el archivo de diseño en (1000, 80), sin girar.
     const ref = { outline: base.outline.map((q) => ({ x: q.x + 1000, y: q.y + 80 })), box: { minX: bb.minX + 1000, minY: bb.minY + 80, maxX: bb.maxX + 1000, maxY: bb.maxY + 80 }, rotation: 0 as const, match: 1 };
-    const m = designToPiece(ref, base, target);
+    const m = designToPiece(ref, base, target, { fit: "ancho" });
     const uB = gridUnit(base), uT = gridUnit(target);
     // Escudo en el diseño: 2,5 u desde el costado derecho del dibujo y 3,5 u desde el hombro.
     const crestCanvas = { x: bb.maxX - 2.5 * uB + 1000, y: bb.minY + 3.5 * uB + 80 };
@@ -538,5 +538,40 @@ describe("plantillas de diseño", () => {
     expect(t.aspect).toBeCloseTo(0.5, 2);
     const shapes = renderTemplate({ id: "custom:x", params: { ajuste: "estirar", zoom: 100, subir: 0 }, colors: ["#111111", "#222222", "#333333"] }, cv, [{ ...t, id: "x" }]);
     expect(shapes.filter((s) => s.kind === "poly").map((s) => (s as { color: string }).color).slice(1)).toEqual(["#111111", "#222222", "#333333", "#ABCDEF"]);
+  });
+});
+
+describe("arte llevado a otros talles (ajuste y piezas giradas)", () => {
+  const molds = sampleMolds();
+  const refOf = (p: PatternPiece) => {
+    const b = bbox(p.outline);
+    return { outline: p.outline, box: b, rotation: 0 as const, match: 1 };
+  };
+  it("ajustar: el arte cubre la pieza de punta a punta, a lo ancho y a lo largo", () => {
+    const base = molds.find((m) => m.sizeLabel === "M" && m.kind === "frente")!;
+    const target = molds.find((m) => m.sizeLabel === "XL" && m.kind === "frente")!;
+    const m = designToPiece(refOf(base), base, target, { fit: "ajustar" });
+    const bb = bbox(base.outline), tb = bbox(target.outline);
+    const bottom = apply(m, { x: (bb.minX + bb.maxX) / 2, y: bb.maxY });
+    const left = apply(m, { x: bb.minX, y: (bb.minY + bb.maxY) / 2 });
+    expect(bottom.y).toBeCloseTo(tb.maxY, 6); // llega al ruedo
+    expect(left.x).toBeCloseTo(tb.minX, 6); // y al costado
+  });
+  it("una manga dibujada girada en otro talle recibe el arte girado", () => {
+    const base = molds.find((m) => m.sizeLabel === "M" && m.kind === "manga_izq")!;
+    const t0 = molds.find((m) => m.sizeLabel === "L" && m.kind === "manga_izq")!;
+    const tb = bbox(t0.outline);
+    const cx = (tb.minX + tb.maxX) / 2, cy = (tb.minY + tb.maxY) / 2;
+    const rotated = { ...t0, id: "rot", outline: t0.outline.map((p) => ({ x: 2 * cx - p.x, y: 2 * cy - p.y })) };
+    const mUp = designToPiece(refOf(base), base, t0);
+    const mRot = designToPiece(refOf(base), base, rotated);
+    // El punto más alto de la copa en el diseño cae en la copa de cada pieza.
+    const capB = shoulderTop(base);
+    const capUp = apply(mUp, capB);
+    const capRot = apply(mRot, capB);
+    expect(capUp.y).toBeLessThan(cy); // arriba en la manga derecha
+    expect(capRot.y).toBeGreaterThan(cy); // abajo en la manga girada
+    expect(capRot.x).toBeCloseTo(2 * cx - capUp.x, 3);
+    expect(capRot.y).toBeCloseTo(2 * cy - capUp.y, 3);
   });
 });

@@ -98,6 +98,13 @@ export async function pdfPrimitives(bytes: Uint8Array, pageIndex = 0): Promise<{
       case "rg": if (a.length >= 3) fillColor = hex(a[a.length - 3], a[a.length - 2], a[a.length - 1]); break;
       case "g": if (a.length >= 1) fillColor = hex(a[0], a[0], a[0]); break;
       case "k": if (a.length >= 4) { const [c, m, y, k] = a.slice(-4); fillColor = hex((1 - c) * (1 - k), (1 - m) * (1 - k), (1 - y) * (1 - k)); } break;
+      // Corel usa espacios de color ICC: "/CS14 cs 0.06 0.17 0.36 scn".
+      case "sc":
+      case "scn":
+        if (a.length === 1) fillColor = hex(a[0], a[0], a[0]);
+        else if (a.length === 3) fillColor = hex(a[0], a[1], a[2]);
+        else if (a.length === 4) { const [c, m, y, k] = a; fillColor = hex((1 - c) * (1 - k), (1 - m) * (1 - k), (1 - y) * (1 - k)); }
+        break;
       case "cm": if (a.length >= 6) ctm = mul(ctm, a.slice(-6) as M); break;
       case "m":
         if (cur && cur.length > 1) path.push({ points: cur, closed: false });

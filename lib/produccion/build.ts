@@ -1,5 +1,5 @@
 import { assemblyTransforms, backgroundTransform, sizeScale } from "./assembly";
-import { areaOutside, bbox, compose, offset, rectPoly, spanAtY, translate } from "./geometry";
+import { area, areaOutside, bbox, compose, intersectionArea, offset, rectPoly, spanAtY, translate } from "./geometry";
 import { baselineY, gridUnit, normalizeSize, placeElement, safeZoneOverflow, shoulderTop, sizeGroupOf, xFromWearerSide, yFromShoulderTop } from "./rules";
 import type {
   Affine,
@@ -11,6 +11,7 @@ import type {
   PlacedText,
   PrintPiece,
   PieceKind,
+  Poly,
   TextStyle,
   Warning,
 } from "./types";
@@ -90,18 +91,60 @@ export function contrastOn(bg?: string | null): string {
  * centro y el punto más alto del hombro. Así todo lo que está en el arte
  * (escudo, logos) cae en las mismas unidades de la grilla en cada talle.
  */
-export function designToPiece(ref: NonNullable<DesignConfig["background"]["pieces"]>[PieceKind], base: PatternPiece, target: PatternPiece): Affine {
+export function designToPiece(
+  ref: NonNullable<DesignConfig["background"]["pieces"]>[PieceKind],
+  base: PatternPiece,
+  target: PatternPiece,
+  opts: { fit?: "ajustar" | "ancho" } = {}
+): Affine {
   const b = ref!.box;
   const canvasToRefLocal: Affine =
     ref!.rotation === 180 ? { a: -1, b: 0, c: 0, d: -1, e: b.maxX, f: b.maxY } : translate(-b.minX, -b.minY);
   const bb = bbox(base.outline);
   const toBase = compose(canvasToRefLocal, translate(bb.minX, bb.minY));
+  // Si en la moldería esta pieza está dibujada girada 180° respecto del talle
+  // base, el arte se lleva a la pieza "derecha" y después se gira con ella.
+  const flipped = rotatedVsBase(base, target);
   const tb = bbox(target.outline);
-  const s = (tb.maxX - tb.minX) / (bb.maxX - bb.minX);
-  const refL = { x: (bb.minX + bb.maxX) / 2, y: shoulderTop(base).y };
-  const refS = { x: (tb.minX + tb.maxX) / 2, y: shoulderTop(target).y };
-  const scale: Affine = { a: s, b: 0, c: 0, d: s, e: refS.x - s * refL.x, f: refS.y - s * refL.y };
-  return compose(toBase, scale);
+  const center = { x: (tb.minX + tb.maxX) / 2, y: (tb.minY + tb.maxY) / 2 };
+  const rot: Affine = { a: -1, b: 0, c: 0, d: -1, e: 2 * center.x, f: 2 * center.y };
+  const upright = flipped ? { ...target, outline: target.outline.map((p) => ({ x: 2 * center.x - p.x, y: 2 * center.y - p.y })), shoulderPoint: undefined } : target;
+  const sx = (tb.maxX - tb.minX) / (bb.maxX - bb.minX);
+  const topB = shoulderTop(base).y;
+  const topT = shoulderTop(upright).y;
+  const sy = opts.fit === "ancho" ? sx : (tb.maxY - topT) / (bb.maxY - topB || 1);
+  const refL = { x: (bb.minX + bb.maxX) / 2, y: topB };
+  const refS = { x: (tb.minX + tb.maxX) / 2, y: topT };
+  const scale: Affine = { a: sx, b: 0, c: 0, d: sy, e: refS.x - sx * refL.x, f: refS.y - sy * refL.y };
+  const m = compose(toBase, scale);
+  return flipped ? compose(m, rot) : m;
+}
+
+const flipCache = new WeakMap<PatternPiece, Map<PatternPiece, boolean>>();
+/** ¿La pieza del talle está dibujada girada 180° respecto de la del talle base? (comparando formas normalizadas) */
+export function rotatedVsBase(base: PatternPiece, target: PatternPiece): boolean {
+  if (base === target) return false;
+  let m = flipCache.get(base);
+  if (!m) flipCache.set(base, (m = new Map()));
+  const hit = m.get(target);
+  if (hit !== undefined) return hit;
+  const norm = (poly: Poly, r: boolean): Poly => {
+    const q = bbox(poly);
+    const w = q.maxX - q.minX || 1, h = q.maxY - q.minY || 1;
+    return poly.map((p) => {
+      let x = (p.x - q.minX) / w, y = (p.y - q.minY) / h;
+      if (r) { x = 1 - x; y = 1 - y; }
+      return { x: x * 1000, y: y * 1000 };
+    });
+  };
+  const nb = norm(base.outline, false);
+  const iou = (t: Poly) => {
+    const i = intersectionArea(nb, t);
+    return i / (area(nb) + area(t) - i || 1);
+  };
+  const res = iou(norm(target.outline, true)) > iou(norm(target.outline, false)) + 0.05;
+  m.set(target, res);
+  return res;
 }
 
 export type BuildInput = {
@@ -227,7 +270,7 @@ export function buildPrintPieces({ pieces, assembly, design, garments, measure }
         const ref = design.background.pieces?.[piece.kind];
         const basePiece = base.find((p) => p.kind === piece.kind);
         if (ref && basePiece) {
-          bgT = designToPiece(ref, basePiece, piece);
+          bgT = designToPiece(ref, basePiece, piece, { fit: design.background.fit ?? "ajustar" });
           // 1,5 mm hacia adentro: deja afuera la línea de la pieza dibujada en el
           // diseño (si no, aparece como un filete oscuro al escalar). Ese borde
           // cae en la costura y queda cubierto por el color de fondo.

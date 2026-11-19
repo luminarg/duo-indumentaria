@@ -20,7 +20,7 @@ import {
   setFillingRgbColor,
   drawObject,
 } from "pdf-lib";
-import { compose, translate } from "./geometry";
+import { bbox, compose, translate } from "./geometry";
 import { placementTransform } from "./nesting";
 import type { TextMeasurer } from "./build";
 import type { Affine, BackgroundRule, Poly, RollLayout, Segment } from "./types";
@@ -187,6 +187,18 @@ export async function exportRollPdf(layout: RollLayout, background: BackgroundRu
       if (bgPage && !(clipCanvas && clipCanvas.length === 0)) {
         // Lienzo del diseño → pieza. En modo "piezas" se recorta además por la
         // pieza del diseño, así no entra el contorno ni el arte de otra pieza.
+        if (clipCanvas && clipCanvas.length > 2) {
+          // Sangrado: abajo, una copia del arte de esta pieza agrandada un 6 %
+          // desde su centro. Si la pieza de otro talle no coincide exacto con
+          // la del diseño (sisa, ruedo), los bordes se completan con el mismo
+          // arte en vez de quedar del color de fondo.
+          const pb = bbox(outline);
+          const c = { x: (pb.minX + pb.maxX) / 2, y: (pb.minY + pb.maxY) / 2 };
+          const k = 1.06;
+          const grow: Affine = { a: k, b: 0, c: 0, d: k, e: c.x * (1 - k), f: c.y * (1 - k) };
+          page.pushOperators(pushGraphicsState(), cm(grow), cm(print.backgroundTransform), ...pathOps(clipCanvas), clip(), endPath());
+          page.pushOperators(cm(embeddedToCanvas(bgPage)), drawObject(xobj(bgPage)), popGraphicsState());
+        }
         page.pushOperators(pushGraphicsState(), cm(print.backgroundTransform));
         if (clipCanvas && clipCanvas.length > 2) page.pushOperators(...pathOps(clipCanvas), clip(), endPath());
         page.pushOperators(cm(embeddedToCanvas(bgPage)), drawObject(xobj(bgPage)), popGraphicsState());
