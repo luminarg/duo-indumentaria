@@ -5,6 +5,7 @@ import {
   PDFPage,
   PDFFont,
   PDFName,
+  PDFRef,
   StandardFonts,
   rgb,
   pushGraphicsState,
@@ -26,12 +27,13 @@ import {
   stroke,
   drawObject,
 } from "pdf-lib";
-import { bbox, compose, offset, translate } from "./geometry";
+import { apply, bbox, compose, offset, translate } from "./geometry";
 import { placementTransform } from "./nesting";
 import { embedAsGroup, embedSrgbProfile, markTransparencyGroup } from "./colorProfile";
+import { ArtBaker } from "./bakeArt";
 import type { MockupLayout } from "./mockup";
 import type { TextMeasurer } from "./build";
-import type { Affine, BackgroundRule, PlacedText, Poly, PrintPiece, RollLayout, Segment } from "./types";
+import type { Affine, BackgroundRule, PlacedText, Poly, PrintPiece, Pt, RollLayout, Segment } from "./types";
 
 // Exportación del rollo a PDF vectorial.
 //
@@ -132,18 +134,53 @@ async function createPainter(doc: PDFDocument, background: BackgroundRule, asset
   for (const [path, bytes] of Object.entries(assets.elements ?? {})) elementPages[path] = await embedAsGroup(doc, bytes);
 
 
-  const xobjNames = new WeakMap<PDFPage, Map<PDFEmbeddedPage, PDFName>>();
-  const xobjFor = (page: PDFPage) => (p: PDFEmbeddedPage): PDFName => {
+  const xobjNames = new WeakMap<PDFPage, Map<PDFRef, PDFName>>();
+  const refName = (page: PDFPage, ref: PDFRef): PDFName => {
     let m = xobjNames.get(page);
     if (!m) {
       m = new Map();
       xobjNames.set(page, m);
     }
-    const hit = m.get(p);
+    const hit = m.get(ref);
     if (hit) return hit;
-    const n = page.node.newXObject("Arte", p.ref);
-    m.set(p, n);
+    const n = page.node.newXObject("Arte", ref);
+    m.set(ref, n);
     return n;
+  };
+  const xobjFor = (page: PDFPage) => (p: PDFEmbeddedPage): PDFName => refName(page, p.ref);
+
+  // Corel no escala las máscaras de transparencia: cada arte se escribe con la
+  // escala ya aplicada (ver bakeArt.ts) y se dibuja solo movido.
+  for (const e of [...Object.values(bgPages), ...Object.values(elementPages), ...(defaultBg ? [defaultBg] : [])]) await e.embed();
+  const baker = new ArtBaker(doc);
+  const invA = (m: Affine): Affine => {
+    const det = m.a * m.d - m.b * m.c;
+    const a = m.d / det, b = -m.b / det, c = -m.c / det, d = m.a / det;
+    return { a, b, c, d, e: -(a * m.e + c * m.f), f: -(b * m.e + d * m.f) };
+  };
+  /**
+   * Operadores para dibujar `emb` con `art` (espacio del arte → espacio
+   * actual), estando en `current` (espacio actual → página). `region` y
+   * `hole` (espacio actual) limitan los trazos a la zona visible.
+   */
+  const artOps = (page: PDFPage, emb: PDFEmbeddedPage, art: Affine, current: Affine, region: Poly | null = null, hole: Poly | null = null) => {
+    const F = compose(art, current);
+    const toBaked = (q: Pt) => {
+      const p = apply(current, q);
+      return { x: p.x - F.e, y: p.y - F.f };
+    };
+    const poly = region ? (offset(region, 8) ?? region).map(toBaked) : null;
+    const holeB = hole ? hole.map(toBaked) : null;
+    const rk = poly ? JSON.stringify([bbox(poly), poly.length, holeB ? bbox(holeB) : null], (_k, v) => (typeof v === "number" ? Math.round(v * 2) / 2 : v)) : "";
+    let ref: PDFRef | null = null;
+    try {
+      ref = baker.bakeEmbedded(emb, [F.a, F.b, F.c, F.d, 0, 0], poly ? { poly, hole: holeB } : null, rk);
+    } catch {
+      ref = null;
+    }
+    if (!ref) return [cm(art), drawObject(xobjFor(page)(emb))];
+    // Neto: solo el movimiento (lo único que Corel respeta en las máscaras).
+    return [cm(compose(translate(F.e, F.f), invA(current))), drawObject(refName(page, ref))];
   };
 
   /**
@@ -151,7 +188,6 @@ async function createPainter(doc: PDFDocument, background: BackgroundRule, asset
    * puede ser cualquier transformación (en el mockup las mangas van giradas).
    */
   function drawPiece(page: PDFPage, print: PrintPiece, pieceToPage: Affine, opts: { skipTextKinds?: PlacedText["kind"][] } = {}) {
-    const xobj = xobjFor(page);
     const outline = print.piece.outline;
     // 1. Fondo recortado por la línea de la pieza.
     const bgPage = print.bgFile ? (bgPages[print.bgFile] ?? (print.bgFile === background.filePath ? defaultBg : null)) : print.bgFile === undefined ? defaultBg : null;
@@ -175,11 +211,16 @@ async function createPainter(doc: PDFDocument, background: BackgroundRule, asset
         const k = 1.06;
         const grow: Affine = { a: k, b: 0, c: 0, d: k, e: c.x * (1 - k), f: c.y * (1 - k) };
         page.pushOperators(pushGraphicsState(), cm(grow), cm(print.backgroundTransform), ...pathOps(clipCanvas), clip(), endPath());
-        page.pushOperators(cm(embeddedToCanvas(bgPage)), drawObject(xobj(bgPage)), popGraphicsState());
+        // Lo de adentro lo tapa el arte de arriba: alcanza con el borde.
+        const cb = bbox(clipCanvas);
+        const inset = (k - 1) * Math.max(cb.maxX - cb.minX, cb.maxY - cb.minY) + 10;
+        const cur = compose(compose(print.backgroundTransform, grow), pieceToPage);
+        page.pushOperators(...artOps(page, bgPage, embeddedToCanvas(bgPage), cur, clipCanvas, offset(clipCanvas, -inset)), popGraphicsState());
       }
       page.pushOperators(pushGraphicsState(), cm(print.backgroundTransform));
       if (clipCanvas && clipCanvas.length > 2) page.pushOperators(...pathOps(clipCanvas), clip(), endPath());
-      page.pushOperators(cm(embeddedToCanvas(bgPage)), drawObject(xobj(bgPage)), popGraphicsState());
+      const visible = clipCanvas && clipCanvas.length > 2 ? clipCanvas : outline.map((q) => apply(invA(print.backgroundTransform), q));
+      page.pushOperators(...artOps(page, bgPage, embeddedToCanvas(bgPage), compose(print.backgroundTransform, pieceToPage), visible), popGraphicsState());
     }
 
     // 2. Elementos anclados (escudo, sponsors), también recortados.
@@ -191,7 +232,7 @@ async function createPainter(doc: PDFDocument, background: BackgroundRule, asset
         compose(embeddedToCanvas(art), { a: s, b: 0, c: 0, d: s, e: 0, f: 0 }),
         translate(el.center.x - el.widthMm / 2, el.center.y - el.heightMm / 2)
       );
-      page.pushOperators(pushGraphicsState(), cm(m), drawObject(xobj(art)), popGraphicsState());
+      page.pushOperators(pushGraphicsState(), ...artOps(page, art, m, pieceToPage), popGraphicsState());
     }
     page.pushOperators(popGraphicsState());
 
@@ -204,7 +245,7 @@ async function createPainter(doc: PDFDocument, background: BackgroundRule, asset
           compose(embeddedToCanvas(art), { a: s, b: 0, c: 0, d: s, e: 0, f: 0 }),
           translate(bx.center.x - bx.widthMm / 2, bx.center.y - bx.heightMm / 2)
         );
-        page.pushOperators(pushGraphicsState(), cm(pieceToPage), cm(m), drawObject(xobj(art)), popGraphicsState());
+        page.pushOperators(pushGraphicsState(), cm(pieceToPage), ...artOps(page, art, m, pieceToPage), popGraphicsState());
         continue;
       }
       if (!bx.strokeMm) continue;
@@ -236,7 +277,7 @@ async function createPainter(doc: PDFDocument, background: BackgroundRule, asset
 
   }
 
-  return { drawPiece, helvetica, fonts, elementPages, xobjFor };
+  return { drawPiece, helvetica, fonts, elementPages, xobjFor, artOps };
 }
 
 export async function exportRollPdf(layout: RollLayout, background: BackgroundRule, assets: ExportAssets = {}, opts: ExportOptions = {}) {
@@ -264,7 +305,6 @@ export async function exportRollPdf(layout: RollLayout, background: BackgroundRu
       ? { a: MM, b: 0, c: 0, d: -MM, e: segIndex * (rollW + gap) * MM, f: (sheetH + seg.startMm) * MM }
       : { a: MM, b: 0, c: 0, d: -MM, e: 0, f: seg.endMm * MM };
 
-    const xobj = painter.xobjFor(page);
 
     // Panel de cuellos: tiras a lo ancho, con la línea divisoria entre ellas.
     if (seg.collars) {
@@ -283,7 +323,7 @@ export async function exportRollPdf(layout: RollLayout, background: BackgroundRu
           const tileW = (art.width / MM) * s;
           for (let x = x0; x < x0 + w; x += tileW) {
             const m = compose(compose(embeddedToCanvas(art), { a: s, b: 0, c: 0, d: s, e: 0, f: 0 }), translate(x, top));
-            page.pushOperators(pushGraphicsState(), cm(m), drawObject(xobj(art)), popGraphicsState());
+            page.pushOperators(pushGraphicsState(), ...painter.artOps(page, art, m, rollToPage), popGraphicsState());
           }
         }
         page.pushOperators(popGraphicsState());
