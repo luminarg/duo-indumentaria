@@ -94,22 +94,6 @@ function fitPiece(s: TemplateSmart, p: PieceRaster) {
   return { ax: (x1 - x0) / s.srcW, bx: x0, ay: (b.maxY - ycap) / s.srcH, by: ycap };
 }
 
-/** Punto de la fuente (px sin escalar) → documento, interpolando la malla. */
-function meshMap(s: TemplateSmart, u: number, v: number) {
-  const fi = Math.min(Math.max((u / s.srcW) * s.cols, 0), s.cols - 1e-6);
-  const fj = Math.min(Math.max((v / s.srcH) * s.rows, 0), s.rows - 1e-6);
-  const i = Math.floor(fi), j = Math.floor(fj), tu = fi - i, tv = fj - j;
-  const at = (ii: number, jj: number) => {
-    const n = (jj * (s.cols + 1) + ii) * 2;
-    return { x: s.dst[n], y: s.dst[n + 1] };
-  };
-  const a = at(i, j), b = at(i + 1, j), c = at(i, j + 1), d = at(i + 1, j + 1);
-  return {
-    x: (1 - tv) * ((1 - tu) * a.x + tu * b.x) + tv * ((1 - tu) * c.x + tu * d.x),
-    y: (1 - tv) * ((1 - tu) * a.y + tu * b.y) + tv * ((1 - tu) * c.y + tu * d.y),
-  };
-}
-
 /** Dibuja la imagen `src` deformada por la malla en `ctx` (triángulo por triángulo). */
 function drawMesh(ctx: CanvasRenderingContext2D, src: HTMLCanvasElement, s: TemplateSmart) {
   const k = src.width / s.srcW;
@@ -161,6 +145,14 @@ function drawMesh(ctx: CanvasRenderingContext2D, src: HTMLCanvasElement, s: Temp
     }
 }
 
+function growLayer(ctx: CanvasRenderingContext2D, layer: HTMLCanvasElement, steps: number[]) {
+  const dirs = [[1, 0], [-1, 0], [0, 1], [0, -1], [0.7, 0.7], [-0.7, 0.7], [0.7, -0.7], [-0.7, -0.7]];
+  ctx.save();
+  ctx.globalCompositeOperation = "destination-over";
+  for (const r of steps) for (const [dx, dy] of dirs) ctx.drawImage(layer, Math.round(dx * r), Math.round(dy * r));
+  ctx.restore();
+}
+
 function canvasOf(w: number, h: number) {
   const c = document.createElement("canvas");
   c.width = Math.max(1, Math.round(w));
@@ -195,13 +187,7 @@ export async function renderPhotoView(base: string, pieces: PieceRaster[], opts:
   // Para cuello y puños de color o del fondo: por debajo de las mangas, el puño
   // queda del color de la manga.
 
-  // 2. Cada objeto inteligente con su pieza. Primero el cuerpo: su contorno en
-  //    la foto marca la costura de la sisa; las mangas cubren de ahí para afuera
-  //    (la plantilla del cuerpo también tapa la copa de la manga).
-  const garmentImg = await img(t.garment.file);
-  const { c: garmentFull, ctx: gctx } = canvasOf(W, H);
-  gctx.drawImage(garmentImg, t.garment.offset[0], t.garment.offset[1]);
-  let bodyPoly: { x: number; y: number }[] | null = null;
+  // 2. Cada objeto inteligente con su pieza: primero el cuerpo, las mangas encima.
   const ordered = [...t.smart].sort((a, b) => (a.fit === "body" ? -1 : 0) - (b.fit === "body" ? -1 : 0));
   for (const s of ordered) {
     const p = pieces.find((x) => x.kind === s.kind);
@@ -222,25 +208,14 @@ export async function renderPhotoView(base: string, pieces: PieceRaster[], opts:
     const { c: layer, ctx: lctx } = canvasOf(W, H);
     drawMesh(lctx, src, s);
     lctx.setTransform(1, 0, 0, 1, 0, 0);
+    // Manga: la malla no siempre llega a todo el borde de su máscara; se estira
+    // el arte hacia afuera (copias corridas por debajo) y la máscara lo recorta.
+    if (s.fit !== "body") growLayer(lctx, layer, [3, 6, 12, 24, 48]);
     const mk = await img(s.mask.file);
     const { c: mfull, ctx: mctx } = canvasOf(W, H);
-    if (s.fit === "body") {
-      // Contorno de la pieza en la foto (mm → fuente → documento).
-      // El cuerpo va con su máscara de la foto; las mangas se dibujan encima
-      // desde la sisa de la pieza, así la copa lleva el arte de la manga.
-      bodyPoly = p.outline.map((q) => meshMap(s, (q.x - f.bx) / f.ax, (q.y - f.by) / f.ay));
-      mctx.drawImage(mk, s.mask.offset[0], s.mask.offset[1]);
-    } else {
-      // Manga: toda la prenda menos el cuerpo (incluye la copa).
-      mctx.drawImage(garmentFull, 0, 0);
-      if (bodyPoly) {
-        mctx.globalCompositeOperation = "destination-out";
-        mctx.beginPath();
-        bodyPoly.forEach((q, i) => (i ? mctx.lineTo(q.x, q.y) : mctx.moveTo(q.x, q.y)));
-        mctx.closePath();
-        mctx.fill();
-      }
-    }
+    // Cada objeto con su máscara de la foto; las mangas van encima del cuerpo
+    // (la máscara de la manga llega hasta la costura de la sisa de la foto).
+    mctx.drawImage(mk, s.mask.offset[0], s.mask.offset[1]);
     lctx.globalCompositeOperation = "destination-in";
     lctx.drawImage(mfull, 0, 0);
     ctx.drawImage(layer, 0, 0);

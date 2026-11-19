@@ -498,8 +498,10 @@ export function ProductionWorkbench(props: {
       let pdf: Uint8Array | null = null;
       if (mockStyle === "foto") {
         // Foto: cada pieza con su arte → sobre la plantilla de remera (frente y espalda).
-        const MARGIN = 60, PPM = 4;
-        const pagesPdf = await exportPiecePages(one, designConfig.background, exportAssets, { marginMm: MARGIN });
+        const MARGIN = 120, PPM = 4;
+        const pagesPdf = await exportPiecePages(one, designConfig.background, exportAssets, { marginMm: MARGIN, bleedMm: MARGIN - 5 });
+        // Sangrado grande: la foto tiene el escote más alto y la sisa algo distinta
+        // que el molde; ahí se ve la continuación del arte y no el color de fondo.
         const canvases = await pdfPagesToCanvases(pagesPdf, PPM / (72 / 25.4));
         const rasters: PieceRaster[] = one.map((p, i) => {
           const b = polyBox(p.piece.outline);

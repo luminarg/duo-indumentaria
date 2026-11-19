@@ -28,6 +28,7 @@ import {
 } from "pdf-lib";
 import { bbox, compose, offset, translate } from "./geometry";
 import { placementTransform } from "./nesting";
+import { embedSrgbProfile } from "./colorProfile";
 import type { MockupLayout } from "./mockup";
 import type { TextMeasurer } from "./build";
 import type { Affine, BackgroundRule, PlacedText, Poly, PrintPiece, RollLayout, Segment } from "./types";
@@ -240,6 +241,7 @@ async function createPainter(doc: PDFDocument, background: BackgroundRule, asset
 
 export async function exportRollPdf(layout: RollLayout, background: BackgroundRule, assets: ExportAssets = {}, opts: ExportOptions = {}) {
   const doc = await PDFDocument.create();
+  embedSrgbProfile(doc);
   doc.setTitle("Rollo de sublimación");
   doc.setCreator("Duo Indumentaria — Módulo de producción");
 
@@ -341,6 +343,7 @@ function applyInverse(m: Affine, poly: Poly): Poly {
  */
 export async function exportMockupPdf(mock: MockupLayout, background: BackgroundRule, assets: ExportAssets = {}, opts: { title?: string } = {}) {
   const doc = await PDFDocument.create();
+  embedSrgbProfile(doc);
   doc.setTitle(opts.title ?? "Mockup");
   doc.setCreator("Duo Indumentaria — Módulo de producción");
   const painter = await createPainter(doc, background, assets);
@@ -397,8 +400,9 @@ function invertAffine(m: Affine): Affine {
  * "sangrado" hacia afuera de la línea: lo usa el mockup fotográfico, que
  * necesita arte un poco más allá del borde para cubrir hombros y costados.
  */
-export async function exportPiecePages(prints: PrintPiece[], background: BackgroundRule, assets: ExportAssets = {}, opts: { marginMm?: number; bleed?: number } = {}) {
+export async function exportPiecePages(prints: PrintPiece[], background: BackgroundRule, assets: ExportAssets = {}, opts: { marginMm?: number; bleed?: number; bleedMm?: number } = {}) {
   const doc = await PDFDocument.create();
+  embedSrgbProfile(doc);
   const painter = await createPainter(doc, background, assets);
   const margin = opts.marginMm ?? 60;
   const k = opts.bleed ?? 1.18;
@@ -417,7 +421,7 @@ export async function exportPiecePages(prints: PrintPiece[], background: Backgro
     // el color de fondo de la pieza.
     void c;
     void k;
-    const grown = offset(print.piece.outline, Math.min(10, margin));
+    const grown = offset(print.piece.outline, Math.min(opts.bleedMm ?? 10, margin));
     if (grown) painter.drawPiece(page, { ...print, piece: { ...print.piece, outline: grown } }, toPage, { skipTextKinds: ["talle", "nombre", "numero"] });
     painter.drawPiece(page, print, toPage, { skipTextKinds: ["talle"] });
   }

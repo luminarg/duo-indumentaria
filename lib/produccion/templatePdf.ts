@@ -1,3 +1,4 @@
+import { embedSrgbProfile } from "./colorProfile";
 import {
   PDFDict,
   PDFDocument,
@@ -35,6 +36,7 @@ const rgb01 = (hex: string) => {
  */
 export async function templateToPdf(shapes: Shape[], widthMm: number, heightMm: number): Promise<Uint8Array> {
   const doc = await PDFDocument.create();
+  embedSrgbProfile(doc);
   doc.setTitle("Fondo generado por plantilla");
   doc.setCreator("Duo Indumentaria — Módulo de producción");
   const page = doc.addPage([widthMm * MM, heightMm * MM]);
