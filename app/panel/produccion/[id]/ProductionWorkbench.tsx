@@ -484,7 +484,7 @@ export function ProductionWorkbench(props: {
   // Mockup plano (frente y espalda) de una prenda del pedido.
   const [mockGarment, setMockGarment] = useState<string>("");
   const [mockup, setMockup] = useState<{ png: Blob; url: string; pdf: Uint8Array | null; name: string } | null>(null);
-  const [mockStyle, setMockStyle] = useState<"foto" | "plano">("foto");
+  const [mockStyle, setMockStyle] = useState<"duo" | "foto" | "plano">("duo");
   const [trimOn, setTrimOn] = useState(false);
   const [trimColor, setTrimColor] = useState("#C9A646");
   const onMockup = () =>
@@ -496,7 +496,7 @@ export function ProductionWorkbench(props: {
       const exportAssets = await collectExportAssets();
       let png: Blob;
       let pdf: Uint8Array | null = null;
-      if (mockStyle === "foto") {
+      if (mockStyle !== "plano") {
         // Foto: cada pieza con su arte → sobre la plantilla de remera (frente y espalda).
         const MARGIN = 120, PPM = 4;
         const pagesPdf = await exportPiecePages(one, designConfig.background, exportAssets, { marginMm: MARGIN, bleedMm: MARGIN - 5 });
@@ -516,9 +516,11 @@ export function ProductionWorkbench(props: {
           };
         });
         const opts = { trimColor: trimOn ? trimColor : null, cuffColor: trimOn ? trimColor : null };
-        const front = await renderPhotoView("/mockups/remera/frente", rasters, opts);
-        const back = await renderPhotoView("/mockups/remera/espalda", rasters, opts);
-        const joined = joinViews([front, back], { crop: [300, 170, 1420, 1700] });
+        // Remera Duo (foto de la marca) o la de TroutGraph.
+        const base = mockStyle === "duo" ? "/mockups/remera_duo" : "/mockups/remera";
+        const front = await renderPhotoView(`${base}/frente`, rasters, opts);
+        const back = await renderPhotoView(`${base}/espalda`, rasters, opts);
+        const joined = joinViews([front, back], { crop: mockStyle === "duo" ? [0, 20, 1364, 1500] : [300, 170, 1420, 1700] });
         png = await new Promise<Blob>((res, rej) => joined.toBlob((b) => (b ? res(b) : rej(new Error("No se pudo generar la imagen"))), "image/png"));
       } else {
         const m = mockupLayout(one);
@@ -745,12 +747,13 @@ export function ProductionWorkbench(props: {
                 </Select>
               </div>
               <div className="w-40">
-                <Select label="Estilo" value={mockStyle} onChange={(e) => setMockStyle(e.target.value as "foto" | "plano")}>
-                  <option value="foto">Foto (remera)</option>
+                <Select label="Estilo" value={mockStyle} onChange={(e) => setMockStyle(e.target.value as "duo" | "foto" | "plano")}>
+                  <option value="duo">Foto (remera Duo)</option>
+                  <option value="foto">Foto (remera TroutGraph)</option>
                   <option value="plano">Plano (piezas armadas)</option>
                 </Select>
               </div>
-              {mockStyle === "foto" && (
+              {mockStyle !== "plano" && (
                 <label className="flex items-center gap-2 pb-2 text-sm text-zinc-700">
                   <input type="checkbox" checked={trimOn} onChange={(e) => setTrimOn(e.target.checked)} />
                   Cuello y puños de color
@@ -780,7 +783,7 @@ export function ProductionWorkbench(props: {
                 </div>
                 <p className="text-xs text-zinc-500">
                   Es la misma prenda que va al rollo (mismo arte, número y nombre).
-                  {mockStyle === "foto" ? " Foto de remera: mockup de TroutGraph (uso comercial permitido; agradecen el crédito)." : " Vista plana: las mangas se muestran por la mitad, como apoyada en la mesa."}
+                  {mockStyle === "foto" ? " Foto de remera: mockup de TroutGraph (uso comercial permitido; agradecen el crédito)." : mockStyle === "duo" ? " Foto de remera de Duo." : " Vista plana: las mangas se muestran por la mitad, como apoyada en la mesa."}
                 </p>
               </div>
             )}
