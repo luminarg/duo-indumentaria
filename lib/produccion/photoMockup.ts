@@ -88,11 +88,26 @@ function fitPiece(s: TemplateSmart, p: PieceRaster) {
     const ay = (hem - top) / (s.anchors.hemV - s.anchors.topV);
     return { ax, bx: xl - ul * ax, ay, by: top - s.anchors.topV * ay };
   }
-  // Manga: la mitad visible (del pliegue de arriba al costado), de la sisa al puño.
-  const h = b.maxY - b.minY;
-  const ycap = b.minY + h * 0.42;
+  // Manga: la mitad visible (del pliegue de arriba al costado), de la copa al puño.
+  const ycap = b.minY;
   const [x0, x1] = s.side === "min_to_cap" ? [b.minX, p.top.x] : [p.top.x, b.maxX];
   return { ax: (x1 - x0) / s.srcW, bx: x0, ay: (b.maxY - ycap) / s.srcH, by: ycap };
+}
+
+/** Punto de la fuente (px sin escalar) → documento, interpolando la malla. */
+function meshMap(s: TemplateSmart, u: number, v: number) {
+  const fi = Math.min(Math.max((u / s.srcW) * s.cols, 0), s.cols - 1e-6);
+  const fj = Math.min(Math.max((v / s.srcH) * s.rows, 0), s.rows - 1e-6);
+  const i = Math.floor(fi), j = Math.floor(fj), tu = fi - i, tv = fj - j;
+  const at = (ii: number, jj: number) => {
+    const n = (jj * (s.cols + 1) + ii) * 2;
+    return { x: s.dst[n], y: s.dst[n + 1] };
+  };
+  const a = at(i, j), b = at(i + 1, j), c = at(i, j + 1), d = at(i + 1, j + 1);
+  return {
+    x: (1 - tv) * ((1 - tu) * a.x + tu * b.x) + tv * ((1 - tu) * c.x + tu * d.x),
+    y: (1 - tv) * ((1 - tu) * a.y + tu * b.y) + tv * ((1 - tu) * c.y + tu * d.y),
+  };
 }
 
 /** Dibuja la imagen `src` deformada por la malla en `ctx` (triángulo por triángulo). */
@@ -177,9 +192,18 @@ export async function renderPhotoView(base: string, pieces: PieceRaster[], opts:
   const body = pieces.find((p) => p.kind === "frente" || p.kind === "espalda");
   // 1. Prenda en el color de fondo del diseño.
   await fillMask(ctx, await img(t.garment.file), t.garment.offset, body?.bgColor ?? "#FFFFFF");
+  // Para cuello y puños de color o del fondo: por debajo de las mangas, el puño
+  // queda del color de la manga.
 
-  // 2. Cada objeto inteligente con su pieza.
-  for (const s of t.smart) {
+  // 2. Cada objeto inteligente con su pieza. Primero el cuerpo: su contorno en
+  //    la foto marca la costura de la sisa; las mangas cubren de ahí para afuera
+  //    (la plantilla del cuerpo también tapa la copa de la manga).
+  const garmentImg = await img(t.garment.file);
+  const { c: garmentFull, ctx: gctx } = canvasOf(W, H);
+  gctx.drawImage(garmentImg, t.garment.offset[0], t.garment.offset[1]);
+  let bodyPoly: { x: number; y: number }[] | null = null;
+  const ordered = [...t.smart].sort((a, b) => (a.fit === "body" ? -1 : 0) - (b.fit === "body" ? -1 : 0));
+  for (const s of ordered) {
     const p = pieces.find((x) => x.kind === s.kind);
     if (!p) continue;
     const f = fitPiece(s, p);
@@ -200,7 +224,23 @@ export async function renderPhotoView(base: string, pieces: PieceRaster[], opts:
     lctx.setTransform(1, 0, 0, 1, 0, 0);
     const mk = await img(s.mask.file);
     const { c: mfull, ctx: mctx } = canvasOf(W, H);
-    mctx.drawImage(mk, s.mask.offset[0], s.mask.offset[1]);
+    if (s.fit === "body") {
+      // Contorno de la pieza en la foto (mm → fuente → documento).
+      // El cuerpo va con su máscara de la foto; las mangas se dibujan encima
+      // desde la sisa de la pieza, así la copa lleva el arte de la manga.
+      bodyPoly = p.outline.map((q) => meshMap(s, (q.x - f.bx) / f.ax, (q.y - f.by) / f.ay));
+      mctx.drawImage(mk, s.mask.offset[0], s.mask.offset[1]);
+    } else {
+      // Manga: toda la prenda menos el cuerpo (incluye la copa).
+      mctx.drawImage(garmentFull, 0, 0);
+      if (bodyPoly) {
+        mctx.globalCompositeOperation = "destination-out";
+        mctx.beginPath();
+        bodyPoly.forEach((q, i) => (i ? mctx.lineTo(q.x, q.y) : mctx.moveTo(q.x, q.y)));
+        mctx.closePath();
+        mctx.fill();
+      }
+    }
     lctx.globalCompositeOperation = "destination-in";
     lctx.drawImage(mfull, 0, 0);
     ctx.drawImage(layer, 0, 0);
