@@ -81,7 +81,7 @@ export function DesignsManager({ designs }: { designs: Design[] }) {
                     })
                   }
                   className={cn(
-                    "rounded-full px-2 py-0.5 text-xs font-medium",
+                    "rounded-md px-2 py-0.5 text-xs font-semibold",
                     design.active ? "bg-green-100 text-green-800" : "bg-zinc-100 text-zinc-500"
                   )}
                 >

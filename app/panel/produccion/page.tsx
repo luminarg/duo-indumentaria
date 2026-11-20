@@ -166,8 +166,8 @@ export default async function ProduccionPage({ searchParams }: { searchParams: P
                       <Link href={r.href} className="text-base font-semibold text-zinc-900 hover:underline">
                         {r.name}
                       </Link>
-                      {late && <span className="rounded-full bg-red-50 px-2 py-0.5 text-xs font-semibold text-red-700">Atrasado</span>}
-                      {urgent && <span className="rounded-full bg-orange-50 px-2 py-0.5 text-xs font-semibold text-orange-700">Urgente</span>}
+                      {late && <span className="rounded-md bg-red-50 px-2 py-0.5 text-xs font-semibold text-red-700">Atrasado</span>}
+                      {urgent && <span className="rounded-md bg-orange-50 px-2 py-0.5 text-xs font-semibold text-orange-700">Urgente</span>}
                     </div>
                     <div className="text-xs text-zinc-500">
                       {r.sub} · {r.garments} {r.garments === 1 ? "prenda" : "prendas"}
@@ -178,9 +178,9 @@ export default async function ProduccionPage({ searchParams }: { searchParams: P
                       <span key={s.label} className="flex items-center gap-1.5">
                         <span
                           className={cn(
-                            "inline-flex items-center gap-1 rounded-full px-2.5 py-1 text-xs font-semibold",
+                            "inline-flex items-center gap-1 rounded-md px-2 py-0.5 text-xs font-semibold",
                             s.state === "ok" && "bg-green-50 text-green-700",
-                            s.state === "now" && "bg-orange-50 text-orange-800 ring-1 ring-inset ring-orange-200",
+                            s.state === "now" && "bg-[#102C5B] text-white",
                             s.state === "todo" && "bg-zinc-100 text-zinc-500"
                           )}
                         >

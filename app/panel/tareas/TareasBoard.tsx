@@ -295,7 +295,7 @@ export function TareasBoard({
                       <>
                       <div className="flex items-start justify-between gap-2">
                         <p className="text-sm font-medium text-zinc-900">{task.title}</p>
-                        <span className={cn("shrink-0 rounded-full px-2 py-0.5 text-xs font-medium", PRIORITY_STYLES[task.priority])}>
+                        <span className={cn("shrink-0 rounded-md px-2 py-0.5 text-xs font-semibold", PRIORITY_STYLES[task.priority])}>
                           {PRIORITY_LABELS[task.priority]}
                         </span>
                       </div>

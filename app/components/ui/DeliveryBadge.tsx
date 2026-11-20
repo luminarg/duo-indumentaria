@@ -21,7 +21,7 @@ export function DeliveryBadge({
 
   return (
     <span
-      className={`glass-badge inline-flex items-center rounded-full px-2.5 py-1 text-xs font-medium ${STATE_CLASSES[state]}`}
+      className={`glass-badge inline-flex items-center rounded-md px-2 py-0.5 text-xs font-semibold ${STATE_CLASSES[state]}`}
     >
       {DELIVERY_STATE_LABELS[state]}
     </span>

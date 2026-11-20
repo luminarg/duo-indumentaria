@@ -4,7 +4,7 @@ import { useState } from "react";
 import { usePathname } from "next/navigation";
 import { Menu, X, LogOut } from "lucide-react";
 import { cn } from "@/lib/cn";
-import { PanelNav, type NavCounts } from "./PanelNav";
+import { AccountLinks, PanelNav, type NavCounts } from "./PanelNav";
 import { PanelTopbar } from "./PanelTopbar";
 import { WhatsNewModal } from "./WhatsNewModal";
 
@@ -81,27 +81,28 @@ export function PanelShell({
       <aside
         className={cn(
           "glass-sidebar fixed inset-y-0 left-0 z-50 flex w-64 shrink-0 flex-col px-4 transition-transform duration-200 ease-out",
-          "md:sticky md:top-0 md:z-auto md:h-screen md:w-60 md:translate-x-0",
+          "md:sticky md:top-0 md:z-auto md:h-screen md:w-64 md:translate-x-0",
           open ? "translate-x-0" : "-translate-x-full"
         )}
         style={{
-          paddingTop: "calc(env(safe-area-inset-top) + 1.5rem)",
-          paddingBottom: "calc(env(safe-area-inset-bottom) + 1.5rem)",
+          paddingTop: "calc(env(safe-area-inset-top) + 1.25rem)",
+          paddingBottom: "calc(env(safe-area-inset-bottom) + 1rem)",
         }}
       >
-        <div className="mb-4 flex items-center justify-between gap-2 px-2">
-          <div className="flex items-center gap-2.5">
-            {logoUrl ? (
-              // eslint-disable-next-line @next/next/no-img-element
-              <img src={logoUrl} alt={businessName} className="h-8 w-auto max-w-[9rem] object-contain" />
-            ) : (
-              <span className="flex h-9 w-9 items-center justify-center rounded-lg bg-[#00AEEF] text-xs font-extrabold text-[#04263A]">DUO</span>
-            )}
-            <div className="leading-tight">
-              <div className="text-sm font-bold text-white">{businessName}</div>
-              <div className="text-xs text-[#8FA3C4]">Panel de gestión</div>
+        <div className="mb-3 flex items-center justify-between gap-2 px-2">
+          {/* Con logo cargado va solo el logo (el nombre ya está en el logo). */}
+          {logoUrl ? (
+            // eslint-disable-next-line @next/next/no-img-element
+            <img src={logoUrl} alt={businessName} className="h-9 w-auto max-w-[11rem] object-contain" />
+          ) : (
+            <div className="flex min-w-0 items-center gap-2.5">
+              <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-[#00AEEF] text-xs font-extrabold text-[#04263A]">DUO</span>
+              <div className="min-w-0 leading-tight">
+                <div className="truncate text-sm font-bold text-white">{businessName}</div>
+                <div className="text-xs text-[#8FA3C4]">Panel de gestión</div>
+              </div>
             </div>
-          </div>
+          )}
           <button
             onClick={() => setOpen(false)}
             aria-label="Cerrar menú"
@@ -111,11 +112,12 @@ export function PanelShell({
           </button>
         </div>
         <PanelNav counts={counts} />
-        <form action={logout} className="mt-3 flex items-center gap-2.5 rounded-xl bg-white/5 px-3 py-2.5">
+        <form action={logout} className="mt-3 flex items-center gap-1.5 rounded-xl bg-white/5 px-2.5 py-2">
           <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-[#E6F7FD] text-sm font-bold text-[#102C5B]">
             {(userName || "?").trim().charAt(0).toUpperCase()}
           </span>
           <span className="min-w-0 flex-1 truncate text-sm font-semibold text-white">{userName || "Mi cuenta"}</span>
+          <AccountLinks />
           <button aria-label="Cerrar sesión" title="Cerrar sesión" className="rounded-md p-1.5 text-[#C9D5EA] transition-colors hover:bg-white/10 hover:text-white">
             <LogOut className="h-4 w-4" />
           </button>

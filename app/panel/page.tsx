@@ -189,7 +189,7 @@ export default async function DashboardPage() {
         <Card className="overflow-hidden p-0">
           <div className="flex items-center gap-2 px-5 py-4">
             <h2 className="text-sm font-bold text-zinc-900">Para hacer hoy</h2>
-            {todos.some((t) => t.tone === "red") && <span className="rounded-full bg-red-50 px-2.5 py-0.5 text-xs font-semibold text-red-700">Hay atrasados</span>}
+            {todos.some((t) => t.tone === "red") && <span className="rounded-md bg-red-50 px-2 py-0.5 text-xs font-semibold text-red-700">Hay atrasados</span>}
             <Link href="/panel/tareas" className="ml-auto text-sm font-medium text-[#102C5B] hover:underline">
               Tareas ({pendingCount})
             </Link>

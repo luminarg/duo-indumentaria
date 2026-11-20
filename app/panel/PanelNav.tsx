@@ -66,16 +66,16 @@ const GROUPS: { title: string | null; items: Item[] }[] = [
       { href: "/panel/paginas", label: "Páginas", icon: Files },
     ],
   },
-  {
-    title: "Cuenta",
-    items: [
-      { href: "/panel/usuarios", label: "Usuarios", icon: UserCog },
-      { href: "/panel/configuracion", label: "Configuración", icon: Settings },
-    ],
-  },
 ];
 
-const ALL = GROUPS.flatMap((g) => g.items);
+// Usuarios y Configuración van como íconos junto al usuario (abajo del menú),
+// así el menú entra entero sin scrollear.
+const ACCOUNT: Item[] = [
+  { href: "/panel/usuarios", label: "Usuarios", icon: UserCog },
+  { href: "/panel/configuracion", label: "Configuración", icon: Settings },
+];
+
+const ALL = [...GROUPS.flatMap((g) => g.items), ...ACCOUNT];
 
 function activeHref(pathname: string) {
   if (pathname === "/panel") return "/panel";
@@ -92,10 +92,10 @@ export function PanelNav({ counts = {} }: { counts?: NavCounts }) {
   const active = activeHref(pathname);
 
   return (
-    <nav aria-label="Menú principal" className="-mx-1 flex flex-1 flex-col gap-0.5 overflow-y-auto px-1">
+    <nav aria-label="Menú principal" className="no-scrollbar -mx-1 flex min-h-0 flex-1 flex-col gap-px overflow-y-auto px-1">
       {GROUPS.map((g) => (
-        <div key={g.title ?? "inicio"} className="flex flex-col gap-0.5">
-          {g.title && <div className="px-3 pb-1 pt-4 text-[11px] font-semibold uppercase tracking-wider text-[#8FA3C4]">{g.title}</div>}
+        <div key={g.title ?? "inicio"} className="flex flex-col gap-px">
+          {g.title && <div className="px-3 pb-0.5 pt-2.5 text-[10px] font-semibold uppercase tracking-wider text-[#8FA3C4]">{g.title}</div>}
           {g.items.map((item) => {
             const Icon = item.icon;
             const isActive = item.href === active;
@@ -106,7 +106,7 @@ export function PanelNav({ counts = {} }: { counts?: NavCounts }) {
                 href={item.href}
                 aria-current={isActive ? "page" : undefined}
                 className={cn(
-                  "flex items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium transition-colors",
+                  "flex items-center gap-3 rounded-lg px-3 py-[5px] text-[13px] font-medium transition-colors",
                   isActive ? "bg-white text-[#102C5B] font-semibold" : "text-[#C9D5EA] hover:bg-white/10 hover:text-white"
                 )}
               >
@@ -128,5 +128,30 @@ export function PanelNav({ counts = {} }: { counts?: NavCounts }) {
         </div>
       ))}
     </nav>
+  );
+}
+
+/** Accesos de cuenta (Usuarios, Configuración) como íconos. */
+export function AccountLinks() {
+  const pathname = usePathname();
+  const active = activeHref(pathname);
+  return (
+    <>
+      {ACCOUNT.map((it) => {
+        const Icon = it.icon;
+        return (
+          <Link
+            key={it.href}
+            href={it.href}
+            aria-label={it.label}
+            title={it.label}
+            aria-current={it.href === active ? "page" : undefined}
+            className={cn("rounded-md p-1.5 transition-colors", it.href === active ? "bg-white text-[#102C5B]" : "text-[#C9D5EA] hover:bg-white/10 hover:text-white")}
+          >
+            <Icon className="h-4 w-4" />
+          </Link>
+        );
+      })}
+    </>
   );
 }
