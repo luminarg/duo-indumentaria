@@ -24,13 +24,18 @@ import cv2
 import numpy as np
 from PIL import Image
 
-# Ángulo del arco visible a cada lado del centro. 90° sería medio cilindro
-# perfecto (los costados de canto); un poco menos se ve más natural.
-BODY_DEG = 62
-SLEEVE_DEG = 58
+# Ángulo del arco visible a cada lado del centro. El frente del molde es medio
+# contorno del cuerpo: visto de frente, de costura a costura abarca casi 90° a
+# cada lado. Con 80° el centro del pecho queda sin deformar (mismos px por mm
+# a lo ancho que a lo alto: el escudo no se ve flaco) y los costados se
+# comprimen como en una foto real.
+BODY_DEG = 80
+SLEEVE_DEG = 85
 # Caída de las líneas horizontales en los costados (fracción del medio ancho).
 BODY_SAG = 0.06
 SLEEVE_SAG = 0.05
+# Manga: cuánto se estira la malla más allá del puño (y el runtime, igual).
+CUFF_OVERSCAN = 0.12
 # Pliegues: cuánto se corre un punto (px) por unidad de luminancia filtrada.
 FOLD_PX = 900.0
 FOLD_MAX = 12.0  # tope (px) para que un pliegue fuerte no rompa la malla
@@ -127,6 +132,11 @@ def sleeve_mesh(s, fx, fy):
         flat = {"q": [p00.tolist(), p10.tolist(), p01.tolist(), p11.tolist()]}
         s["flat"] = flat
     P00, P10, P01, P11 = (np.array(q) for q in flat["q"])
+    # La malla sigue un poco más allá del puño: el arte (con su sangrado) llega
+    # hasta el borde de la foto sin "dientes" de relleno.
+    P01 = P00 + (P01 - P00) * (1 + CUFF_OVERSCAN)
+    P11 = P10 + (P11 - P10) * (1 + CUFF_OVERSCAN)
+    s["cuffOverscan"] = CUFF_OVERSCAN
     cols, rows = 24, 24
     a = np.linspace(0, 1, cols + 1)
     b = np.linspace(0, 1, rows + 1)

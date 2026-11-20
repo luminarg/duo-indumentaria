@@ -18,6 +18,8 @@ export type TemplateSmart = {
   dst: number[];
   mask: { file: string; offset: [number, number] };
   anchors?: { waistU: [number, number]; waistAt: number; topV: number; hemV: number };
+  /** Manga: fracción extra de largo de la malla más allá del puño del molde. */
+  cuffOverscan?: number;
 };
 export type PhotoTemplate = {
   size: [number, number];
@@ -88,19 +90,22 @@ function fitPiece(s: TemplateSmart, p: PieceRaster) {
     const ay = (hem - top) / (s.anchors.hemV - s.anchors.topV);
     return { ax, bx: xl - ul * ax, ay, by: top - s.anchors.topV * ay };
   }
-  // Manga: la mitad visible (del pliegue de arriba al costado), de la copa al puño.
+  // Manga: la mitad visible (del pliegue de arriba al costado), de la copa al
+  // puño. Con "cuffOverscan" la malla sigue un poco más allá del puño (la foto
+  // tiene el puño más largo que el molde) y ahí va el sangrado del arte.
   const ycap = b.minY;
   const [x0, x1] = s.side === "min_to_cap" ? [b.minX, p.top.x] : [p.top.x, b.maxX];
-  return { ax: (x1 - x0) / s.srcW, bx: x0, ay: (b.maxY - ycap) / s.srcH, by: ycap };
+  const over = 1 + (s.cuffOverscan ?? 0);
+  return { ax: (x1 - x0) / s.srcW, bx: x0, ay: ((b.maxY - ycap) * over) / s.srcH, by: ycap };
 }
 
 /** Dibuja la imagen `src` deformada por la malla en `ctx` (triángulo por triángulo). */
-function drawMesh(ctx: CanvasRenderingContext2D, src: HTMLCanvasElement, s: TemplateSmart) {
+function drawMesh(ctx: CanvasRenderingContext2D, src: HTMLCanvasElement, s: TemplateSmart, out = 1) {
   const k = src.width / s.srcW;
   const cols = s.cols, rows = s.rows;
   const P = (i: number, j: number) => {
     const n = (j * (cols + 1) + i) * 2;
-    return { x: s.dst[n], y: s.dst[n + 1] };
+    return { x: s.dst[n] * out, y: s.dst[n + 1] * out };
   };
   const S = (i: number, j: number) => ({ x: (i / cols) * s.srcW * k, y: (j / rows) * s.srcH * k });
   const tri = (a: [number, number], b: [number, number], c: [number, number]) => {
@@ -119,7 +124,7 @@ function drawMesh(ctx: CanvasRenderingContext2D, src: HTMLCanvasElement, s: Temp
     const cx = (d0.x + d1.x + d2.x) / 3, cy = (d0.y + d1.y + d2.y) / 3;
     const grow = (p: { x: number; y: number }) => {
       const vx = p.x - cx, vy = p.y - cy, l = Math.hypot(vx, vy) || 1;
-      return { x: p.x + (vx / l) * 0.7, y: p.y + (vy / l) * 0.7 };
+      return { x: p.x + (vx / l) * 1.6, y: p.y + (vy / l) * 1.6 };
     };
     const g0 = grow(d0), g1 = grow(d1), g2 = grow(d2);
     ctx.save();
@@ -159,31 +164,50 @@ function canvasOf(w: number, h: number) {
   c.height = Math.max(1, Math.round(h));
   const ctx = c.getContext("2d");
   if (!ctx) throw new Error("El navegador no permite dibujar el mockup");
+  ctx.imageSmoothingEnabled = true;
+  ctx.imageSmoothingQuality = "high";
   return { c, ctx };
 }
 
 /** Pinta `color` dentro de una máscara (PNG blanco con alfa) sobre `ctx`. */
-async function fillMask(ctx: CanvasRenderingContext2D, img: HTMLImageElement, offset: [number, number], color: string) {
-  const { c, ctx: m } = canvasOf(img.width, img.height);
-  m.drawImage(img, 0, 0);
+async function fillMask(ctx: CanvasRenderingContext2D, img: HTMLImageElement, offset: [number, number], color: string, k = 1) {
+  const { c, ctx: m } = canvasOf(img.width * k, img.height * k);
+  m.drawImage(img, 0, 0, c.width, c.height);
   m.globalCompositeOperation = "source-in";
   m.fillStyle = color;
   m.fillRect(0, 0, c.width, c.height);
-  ctx.drawImage(c, offset[0], offset[1]);
+  ctx.drawImage(c, offset[0] * k, offset[1] * k);
 }
 
-export type PhotoOptions = { trimColor?: string | null; backgroundColor?: string; cuffColor?: string | null };
+export type PhotoOptions = {
+  trimColor?: string | null;
+  backgroundColor?: string;
+  cuffColor?: string | null;
+  /**
+   * Resolución de salida respecto de la plantilla. Por defecto, la que deja la
+   * vista en unos 3000 px de alto: la foto se agranda (sus sombras son suaves),
+   * pero el arte, los textos y los bordes salen nítidos.
+   */
+  outScale?: number;
+};
+
+/** Escala de salida por defecto para una plantilla de H px de alto. */
+export function defaultOutScale(templateHeight: number) {
+  return Math.max(1, Math.min(3, Math.round(3000 / templateHeight)));
+}
 
 /** Renderiza una vista (frente o espalda) y devuelve el canvas del tamaño de la plantilla. */
 export async function renderPhotoView(base: string, pieces: PieceRaster[], opts: PhotoOptions = {}): Promise<HTMLCanvasElement> {
   const { t, img } = await loadTemplate(base);
-  const [W, H] = t.size;
+  const k = opts.outScale ?? defaultOutScale(t.size[1]);
+  const W = t.size[0] * k, H = t.size[1] * k;
   const { c: out, ctx } = canvasOf(W, H);
+  out.dataset.scale = String(k); // joinViews recorta en px de la plantilla
   ctx.fillStyle = opts.backgroundColor ?? "#E9E9EC";
   ctx.fillRect(0, 0, W, H);
   const body = pieces.find((p) => p.kind === "frente" || p.kind === "espalda");
   // 1. Prenda en el color de fondo del diseño.
-  await fillMask(ctx, await img(t.garment.file), t.garment.offset, body?.bgColor ?? "#FFFFFF");
+  await fillMask(ctx, await img(t.garment.file), t.garment.offset, body?.bgColor ?? "#FFFFFF", k);
   // Para cuello y puños de color o del fondo: por debajo de las mangas, el puño
   // queda del color de la manga.
 
@@ -193,7 +217,8 @@ export async function renderPhotoView(base: string, pieces: PieceRaster[], opts:
     const p = pieces.find((x) => x.kind === s.kind);
     if (!p) continue;
     const f = fitPiece(s, p);
-    const sc = s.scale || 1;
+    // La fuente se arma más grande en la misma proporción que la salida.
+    const sc = (s.scale || 1) * k;
     const { c: src, ctx: sctx } = canvasOf(s.srcW * sc, s.srcH * sc);
     sctx.fillStyle = p.bgColor;
     sctx.fillRect(0, 0, src.width, src.height);
@@ -206,16 +231,16 @@ export async function renderPhotoView(base: string, pieces: PieceRaster[], opts:
     sctx.setTransform(1, 0, 0, 1, 0, 0);
     // Deformar a una capa del documento y recortar por la máscara del objeto.
     const { c: layer, ctx: lctx } = canvasOf(W, H);
-    drawMesh(lctx, src, s);
+    drawMesh(lctx, src, s, k);
     lctx.setTransform(1, 0, 0, 1, 0, 0);
     // Manga: la malla no siempre llega a todo el borde de su máscara; se estira
     // el arte hacia afuera (copias corridas por debajo) y la máscara lo recorta.
-    if (s.fit !== "body") growLayer(lctx, layer, [3, 6, 12, 24, 48]);
+    if (s.fit !== "body") growLayer(lctx, layer, [3, 6, 12, 24, 48].map((r) => r * k));
     const mk = await img(s.mask.file);
     const { c: mfull, ctx: mctx } = canvasOf(W, H);
     // Cada objeto con su máscara de la foto; las mangas van encima del cuerpo
     // (la máscara de la manga llega hasta la costura de la sisa de la foto).
-    mctx.drawImage(mk, s.mask.offset[0], s.mask.offset[1]);
+    mctx.drawImage(mk, s.mask.offset[0] * k, s.mask.offset[1] * k, mk.width * k, mk.height * k);
     lctx.globalCompositeOperation = "destination-in";
     lctx.drawImage(mfull, 0, 0);
     ctx.drawImage(layer, 0, 0);
@@ -223,16 +248,17 @@ export async function renderPhotoView(base: string, pieces: PieceRaster[], opts:
 
   // 3. Cuello y puños de color (opcional).
   const trim = opts.trimColor;
-  if (trim && t.trims.cuello) await fillMask(ctx, await img(t.trims.cuello.file), t.trims.cuello.offset, trim);
+  if (trim && t.trims.cuello) await fillMask(ctx, await img(t.trims.cuello.file), t.trims.cuello.offset, trim, k);
   const cuff = opts.cuffColor ?? null;
-  if (cuff && t.trims.punos) await fillMask(ctx, await img(t.trims.punos.file), t.trims.punos.offset, cuff);
+  if (cuff && t.trims.punos) await fillMask(ctx, await img(t.trims.punos.file), t.trims.punos.offset, cuff, k);
 
   // 4. Sombras y brillos de la tela.
   for (const tx of t.textures) {
     ctx.save();
     ctx.globalCompositeOperation = tx.mode;
     ctx.globalAlpha = tx.opacity;
-    ctx.drawImage(await img(tx.file), tx.offset[0], tx.offset[1]);
+    const ti = await img(tx.file);
+    ctx.drawImage(ti, tx.offset[0] * k, tx.offset[1] * k, ti.width * k, ti.height * k);
     ctx.restore();
   }
   // El brillo/sombra no debe pintar el fondo: se recorta por la prenda.
@@ -240,8 +266,9 @@ export async function renderPhotoView(base: string, pieces: PieceRaster[], opts:
 }
 
 /** Junta varias vistas una al lado de la otra, recortadas a la prenda. */
-export function joinViews(views: HTMLCanvasElement[], opts: { backgroundColor?: string; crop?: [number, number, number, number] } = {}): HTMLCanvasElement {
-  const [cx, cy, cw, ch] = opts.crop ?? [0, 0, views[0].width, views[0].height];
+export function joinViews(views: HTMLCanvasElement[], opts: { backgroundColor?: string; crop?: [number, number, number, number]; scale?: number } = {}): HTMLCanvasElement {
+  const k = opts.scale ?? (Number(views[0].dataset?.scale) || 1);
+  const [cx, cy, cw, ch] = (opts.crop ?? [0, 0, views[0].width / k, views[0].height / k]).map((v) => v * k);
   const { c, ctx } = canvasOf(cw * views.length, ch);
   ctx.fillStyle = opts.backgroundColor ?? "#E9E9EC";
   ctx.fillRect(0, 0, c.width, c.height);
