@@ -36,13 +36,6 @@ export async function generateMetadata(): Promise<Metadata> {
 }
 
 export async function generateViewport(): Promise<Viewport> {
-  const supabase = await createClient();
-  const { data: settings } = await supabase
-    .from("business_settings")
-    .select("primary_color")
-    .eq("id", 1)
-    .single();
-
   return {
     width: "device-width",
     initialScale: 1,
@@ -50,7 +43,8 @@ export async function generateViewport(): Promise<Viewport> {
     // indicator del iPhone — junto con el padding de env(safe-area-inset-*)
     // en PanelShell, así se ve bien como app instalada (PWA) en iPhone 11.
     viewportFit: "cover",
-    themeColor: settings?.primary_color || "#0a0a0a",
+    // Azul Duo (el del menú) para la barra del celular.
+    themeColor: "#102C5B",
   };
 }
 
@@ -70,10 +64,17 @@ export default async function PanelLayout({
     return <div className="min-h-screen bg-zinc-50">{children}</div>;
   }
 
-  const [{ data: settings }, { data: profile }] = await Promise.all([
+  const [{ data: settings }, { data: profile }, quotes, orders, produce, tasks] = await Promise.all([
     supabase.from("business_settings").select("business_name, logo_url").eq("id", 1).single(),
-    supabase.from("profiles").select("whats_new_seen_at").eq("id", user.id).single(),
+    supabase.from("profiles").select("whats_new_seen_at, full_name").eq("id", user.id).single(),
+    // Contadores del menú: presupuestos sin pedido, pedidos en curso,
+    // pedidos para producir y tareas sin hacer.
+    supabase.from("quotes").select("id", { count: "exact", head: true }).is("order_id", null),
+    supabase.from("orders").select("id", { count: "exact", head: true }).neq("status", "entregado"),
+    supabase.from("orders").select("id", { count: "exact", head: true }).in("status", ["cerrado", "cortando", "diseno_molderia"]),
+    supabase.from("tasks").select("id", { count: "exact", head: true }).neq("status", "hecha"),
   ]);
+  const counts = { quotes: quotes.count ?? 0, orders: orders.count ?? 0, produce: produce.count ?? 0, tasks: tasks.count ?? 0 };
 
   const businessName = settings?.business_name ?? "Duo Indumentaria";
   const logoUrl = settings?.logo_url ?? null;
@@ -81,7 +82,7 @@ export default async function PanelLayout({
   const showWhatsNew = !seenAt || new Date(seenAt) < new Date(WHATS_NEW_RELEASE_AT);
 
   return (
-    <PanelShell businessName={businessName} logoUrl={logoUrl} logout={logout} showWhatsNew={showWhatsNew}>
+    <PanelShell businessName={businessName} logoUrl={logoUrl} logout={logout} showWhatsNew={showWhatsNew} counts={counts} userName={profile?.full_name ?? user.email ?? null}>
       {children}
     </PanelShell>
   );

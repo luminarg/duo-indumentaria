@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import { useSearchParams } from "next/navigation";
 import { Plus } from "lucide-react";
 import { Button } from "../../components/ui/Button";
 import { NewQuoteModal } from "./NewQuoteModal";
@@ -9,7 +10,8 @@ type Client = { id: string; name: string };
 type ArticleType = { id: string; name: string; requires_number: boolean; requires_name: boolean };
 
 export function NewQuoteButton({ clients, articleTypes }: { clients: Client[]; articleTypes: ArticleType[] }) {
-  const [open, setOpen] = useState(false);
+  // Desde el botón "Nuevo" de la barra superior llega con ?nuevo=1.
+  const [open, setOpen] = useState(useSearchParams().get("nuevo") === "1");
 
   return (
     <>

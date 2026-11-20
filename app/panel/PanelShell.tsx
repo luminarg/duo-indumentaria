@@ -1,10 +1,11 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import { usePathname } from "next/navigation";
 import { Menu, X, LogOut } from "lucide-react";
 import { cn } from "@/lib/cn";
-import { PanelNav } from "./PanelNav";
+import { PanelNav, type NavCounts } from "./PanelNav";
+import { PanelTopbar } from "./PanelTopbar";
 import { WhatsNewModal } from "./WhatsNewModal";
 
 // Envoltorio del panel: fondo abstracto + sidebar. En desktop el sidebar
@@ -17,31 +18,34 @@ export function PanelShell({
   logoUrl,
   logout,
   showWhatsNew,
+  counts,
+  userName,
   children,
 }: {
   businessName: string;
   logoUrl: string | null;
   logout: () => Promise<void>;
   showWhatsNew: boolean;
+  counts?: NavCounts;
+  userName?: string | null;
   children: React.ReactNode;
 }) {
   const [open, setOpen] = useState(false);
   const pathname = usePathname();
 
   // Cerrar el drawer automáticamente al navegar a otra pantalla.
-  useEffect(() => {
+  const [lastPath, setLastPath] = useState(pathname);
+  if (pathname !== lastPath) {
+    setLastPath(pathname);
     setOpen(false);
-  }, [pathname]);
+  }
 
   return (
     <div className="flex min-h-screen">
       <WhatsNewModal initialOpen={showWhatsNew} />
       {/* Fondo abstracto — fixed para que quede fijo detrás de todas las
           pantallas del panel sin importar cuánto scrollee el contenido. */}
-      <div className="pointer-events-none fixed inset-0 -z-10 bg-gradient-to-br from-indigo-50 via-white to-emerald-50" />
-      <div className="pointer-events-none fixed -top-24 -left-20 -z-10 h-96 w-96 rounded-full bg-indigo-300/40 blur-3xl" />
-      <div className="pointer-events-none fixed top-10 right-0 -z-10 h-[26rem] w-[26rem] rounded-full bg-emerald-300/30 blur-3xl" />
-      <div className="pointer-events-none fixed bottom-0 left-1/3 -z-10 h-72 w-72 rounded-full bg-fuchsia-300/20 blur-3xl" />
+      <div className="pointer-events-none fixed inset-0 -z-10 bg-[#F3F5F9]" />
 
       {/* Barra superior — solo mobile. padding-top con env(safe-area-inset-top)
           para no quedar debajo del notch cuando está instalada como PWA
@@ -77,7 +81,7 @@ export function PanelShell({
       <aside
         className={cn(
           "glass-sidebar fixed inset-y-0 left-0 z-50 flex w-64 shrink-0 flex-col px-4 transition-transform duration-200 ease-out",
-          "md:static md:z-auto md:w-60 md:translate-x-0",
+          "md:sticky md:top-0 md:z-auto md:h-screen md:w-60 md:translate-x-0",
           open ? "translate-x-0" : "-translate-x-full"
         )}
         style={{
@@ -85,14 +89,18 @@ export function PanelShell({
           paddingBottom: "calc(env(safe-area-inset-bottom) + 1.5rem)",
         }}
       >
-        <div className="mb-8 flex items-center justify-between gap-2 px-2">
-          <div className="flex items-center gap-2">
+        <div className="mb-4 flex items-center justify-between gap-2 px-2">
+          <div className="flex items-center gap-2.5">
             {logoUrl ? (
               // eslint-disable-next-line @next/next/no-img-element
               <img src={logoUrl} alt={businessName} className="h-8 w-auto max-w-[9rem] object-contain" />
             ) : (
-              <span className="text-sm font-bold uppercase tracking-wide text-white">{businessName}</span>
+              <span className="flex h-9 w-9 items-center justify-center rounded-lg bg-[#00AEEF] text-xs font-extrabold text-[#04263A]">DUO</span>
             )}
+            <div className="leading-tight">
+              <div className="text-sm font-bold text-white">{businessName}</div>
+              <div className="text-xs text-[#8FA3C4]">Panel de gestión</div>
+            </div>
           </div>
           <button
             onClick={() => setOpen(false)}
@@ -102,21 +110,27 @@ export function PanelShell({
             <X className="h-5 w-5" />
           </button>
         </div>
-        <PanelNav />
-        <form action={logout}>
-          <button className="flex w-full items-center gap-3 rounded-md px-3 py-2 text-sm text-zinc-400 transition-colors hover:bg-white/10 hover:text-white">
+        <PanelNav counts={counts} />
+        <form action={logout} className="mt-3 flex items-center gap-2.5 rounded-xl bg-white/5 px-3 py-2.5">
+          <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-[#E6F7FD] text-sm font-bold text-[#102C5B]">
+            {(userName || "?").trim().charAt(0).toUpperCase()}
+          </span>
+          <span className="min-w-0 flex-1 truncate text-sm font-semibold text-white">{userName || "Mi cuenta"}</span>
+          <button aria-label="Cerrar sesión" title="Cerrar sesión" className="rounded-md p-1.5 text-[#C9D5EA] transition-colors hover:bg-white/10 hover:text-white">
             <LogOut className="h-4 w-4" />
-            Cerrar sesión
           </button>
         </form>
       </aside>
 
-      <main
-        className="panel-main-safe-pt flex-1 overflow-y-auto p-8"
-        style={{ paddingBottom: "calc(env(safe-area-inset-bottom) + 2rem)" }}
-      >
-        {children}
-      </main>
+      <div className="flex min-w-0 flex-1 flex-col">
+        <PanelTopbar />
+        <main
+          className="panel-main-safe-pt flex-1 overflow-y-auto p-8"
+          style={{ paddingBottom: "calc(env(safe-area-inset-bottom) + 2rem)" }}
+        >
+          {children}
+        </main>
+      </div>
     </div>
   );
 }

@@ -9,7 +9,8 @@
   --background: #ffffff;
   --foreground: #18181b;
   --muted: #a1a1aa;
-  --accent: #16a34a;
+  --accent: #102c5b;
+  --brand: #00aeef;
   --accent-foreground: #ffffff;
 }
 
@@ -37,14 +38,12 @@ body {
    el elemento, más blur y más opaco (cards = sutil, modales = fuerte).
    ============================================================================ */
 
+/* Tarjetas: blancas y sólidas sobre el fondo gris claro del panel (antes
+   eran de vidrio sobre manchas de color; se leían peor). */
 .glass-card {
-  background: rgba(255, 255, 255, 0.18);
-  backdrop-filter: blur(72px) saturate(220%) brightness(1.08);
-  -webkit-backdrop-filter: blur(72px) saturate(220%) brightness(1.08);
-  border: 1px solid rgba(255, 255, 255, 0.82);
-  box-shadow:
-    inset 0 1.5px 0 rgba(255, 255, 255, 1),
-    0 4px 28px rgba(0, 0, 0, 0.07);
+  background: #ffffff;
+  border: 1px solid #e3e8f0;
+  box-shadow: 0 1px 2px rgba(16, 44, 91, 0.04);
 }
 
 /* Variante oscura, para superficies sobre fondo oscuro (pensada para un
@@ -65,7 +64,7 @@ body {
    o se lava. Queda casi opaca (92%) con blur + un filo superior/lateral
    traslúcido para seguir la misma lógica de "vidrio" sin perder legibilidad. */
 .glass-sidebar {
-  background: rgba(9, 9, 11, 0.92);
+  background: #102c5b;
   backdrop-filter: blur(40px) saturate(180%);
   -webkit-backdrop-filter: blur(40px) saturate(180%);
   border-right: 1px solid rgba(255, 255, 255, 0.08);
@@ -86,7 +85,7 @@ body {
 /* Misma lógica que .glass-sidebar pero para la barra superior que aparece
    en mobile (el borde va abajo en vez de al costado). */
 .glass-topbar {
-  background: rgba(9, 9, 11, 0.92);
+  background: #102c5b;
   backdrop-filter: blur(40px) saturate(180%);
   -webkit-backdrop-filter: blur(40px) saturate(180%);
   border-bottom: 1px solid rgba(255, 255, 255, 0.08);
