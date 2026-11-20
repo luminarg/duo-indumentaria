@@ -175,3 +175,4 @@ pasar por una Server Action.
 - **Rollo con varios pedidos** acepta trabajos libres (requiere la migración `032_rollo_combinado_trabajos.sql`).
 - **Bajar talles**: todos los del pedido o uno solo (aunque no esté en el pedido), con el diseño escalado y sin nombre ni número.
 - **DTF en papel** (`/panel/produccion/dtf`): diseños con medida y cantidad, papel en rollo (tramos) u hoja, margen y distancia mínima, giro opcional. Exporta PDF (escala horneada para Corel) y PNG RGBA a 300 dpi (con resolución grabada), un PNG por tramo u hoja (zip si son varios).
+- **Banderas** (`/panel/produccion/banderas`): diseño + medida terminada + cantidad, ajuste (llenar/entero/estirar), dobladillo y color de fondo. Las más anchas que la tela se giran 90°. Arma el rollo y descarga el PDF (sin la copia de sangrado: medida exacta).

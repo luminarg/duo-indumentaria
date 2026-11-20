@@ -802,3 +802,30 @@ describe("DTF en papel", () => {
     expect(pdf.getPageCount()).toBe(1);
   });
 });
+
+import { fitArt, freePiecePrints } from "./freePieces";
+describe("banderas (piezas sueltas a medida)", () => {
+  it("ajusta el diseño a la medida: llenar, entero y estirar, respetando el dobladillo", () => {
+    // Diseño 300×100 en bandera de 150×90 con dobladillo de 20.
+    const cubrir = fitArt(300, 100, 1500, 900, 20, "cubrir");
+    expect(cubrir.t.a).toBeCloseTo(9); // llena el alto (900/100)
+    expect(apply(cubrir.t, { x: 150, y: 50 })).toEqual({ x: 770, y: 470 }); // centro del diseño al centro
+    const entero = fitArt(300, 100, 1500, 900, 20, "entero");
+    expect(entero.t.a).toBeCloseTo(5); // entra el ancho (1500/300)
+    const est = fitArt(300, 100, 1500, 900, 0, "estirar");
+    expect(apply(est.t, { x: 300, y: 100 })).toEqual({ x: 1500, y: 900 });
+  });
+
+  it("gira 90° la que es más ancha que la tela", () => {
+    const files = [{ key: "f", name: "b", bytes: new Uint8Array(), pageWmm: 200, pageHmm: 100 }];
+    const [p] = freePiecePrints([{ id: "1", type: "archivo", fileKey: "f", name: "Bandera", widthMm: 2000, heightMm: 1000, copies: 1, fit: "cubrir", hemMm: 20 }], files, [], 1530);
+    const b = bbox(p.piece.outline);
+    expect(b.maxX).toBeCloseTo(1040);
+    expect(b.maxY).toBeCloseTo(2040);
+    // El arte girado sigue cayendo adentro de la pieza.
+    const c = apply(p.backgroundTransform, { x: 100, y: 50 });
+    expect(c.x).toBeCloseTo(520);
+    expect(c.y).toBeCloseTo(1020);
+    expect(p.noBleed).toBe(true);
+  });
+});

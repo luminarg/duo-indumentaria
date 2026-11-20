@@ -12,6 +12,7 @@ import {
   Download,
   Type,
   Wrench,
+  Flag,
   Sparkles,
 } from "lucide-react";
 import { Modal } from "../components/ui/Modal";
@@ -50,6 +51,12 @@ const SECTIONS: { title: string; items: Item[] }[] = [
         title: "DTF en papel",
         body: "Producción → \"DTF en papel\". Subís los diseños (PDF, PNG o JPG), ponés ancho y cantidad de cada uno, elegís el papel (rollo de 58/60/30 cm, A3, A4 u otra medida), margen y distancia mínima. \"Acomodar en el papel\" los distribuye sin pisarse; sale en PDF y en PNG sin fondo a 300 dpi (un PNG por tramo; si son varios, en un .zip).",
         href: "/panel/produccion/dtf",
+      },
+      {
+        icon: Flag,
+        title: "Banderas",
+        body: "Producción → \"Banderas\". Subís el diseño, elegís la medida (150×90, 200×100… o a medida), cantidad, cómo se ajusta (llenar recortando, entero con color de fondo, o estirar) y el dobladillo. \"Armar rollo\" las acomoda en la tela; las más anchas que la tela se giran solas. Se descarga el PDF listo para imprimir.",
+        href: "/panel/produccion/banderas",
       },
       {
         icon: Puzzle,

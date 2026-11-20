@@ -309,6 +309,7 @@ export function CombinedRoll({
 
       <FreePieces
         prints={lastBuilds}
+        usableWidthMm={fabricMm - 2 * DEFAULT_SETTINGS.edgeMarginMm}
         labelOf={(p) => {
           const o = orders.find((x) => x.id === p.garment.orderItemId.split("|")[0]);
           return [o?.isJob ? o.name : o?.number, p.garment.name, p.garment.number].filter(Boolean).join(" ");

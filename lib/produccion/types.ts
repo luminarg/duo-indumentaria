@@ -324,6 +324,8 @@ export type PrintPiece = {
   /** Archivo y color del fondo de ESTA pieza (en un rollo combinado cada prenda trae su diseño). */
   bgFile?: string | null;
   bgColor?: string | null;
+  /** Sin la copia agrandada de abajo (sangrado): piezas sueltas con medida exacta. */
+  noBleed?: boolean;
   elements: PlacedElement[];
   texts: PlacedText[];
   /** Indicador de talle: arte subido o cuadrado con borde. */

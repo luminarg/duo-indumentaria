@@ -804,7 +804,7 @@ export function ProductionWorkbench(props: {
             )}
           </Card>
 
-          <FreePieces prints={build.prints} onChange={(x) => { setExtra(x); setLayout(null); }} />
+          <FreePieces prints={build.prints} usableWidthMm={fabricMm - 2 * DEFAULT_SETTINGS.edgeMarginMm} onChange={(x) => { setExtra(x); setLayout(null); }} />
 
           <Card>
             <div className="mb-3 flex flex-wrap items-center gap-3">

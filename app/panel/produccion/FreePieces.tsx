@@ -17,11 +17,14 @@ const KIND: Record<string, string> = { frente: "Frente", espalda: "Espalda", man
 export function FreePieces({
   prints,
   labelOf,
+  usableWidthMm,
   onChange,
 }: {
   prints: PrintPiece[];
   /** Cómo nombrar la prenda de una pieza (pedido, nombre, número). */
   labelOf?: (p: PrintPiece) => string;
+  /** Ancho útil de la tela: lo que no entra a lo ancho se gira 90°. */
+  usableWidthMm?: number;
   onChange: (extra: { prints: PrintPiece[]; files: Record<string, Uint8Array> }) => void;
 }) {
   const [items, setItems] = useState<FreePiece[]>([]);
@@ -30,7 +33,7 @@ export function FreePieces({
   const [repoCopies, setRepoCopies] = useState(1);
   const [error, setError] = useState<string | null>(null);
 
-  const extra = useMemo(() => freePiecePrints(items, files, prints), [items, files, prints]);
+  const extra = useMemo(() => freePiecePrints(items, files, prints, usableWidthMm), [items, files, prints, usableWidthMm]);
   useEffect(() => {
     onChange({ prints: extra, files: Object.fromEntries(files.map((f) => [f.key, f.bytes])) });
     // eslint-disable-next-line react-hooks/exhaustive-deps

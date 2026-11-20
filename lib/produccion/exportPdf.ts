@@ -210,7 +210,7 @@ async function createPainter(doc: PDFDocument, background: BackgroundRule, asset
     if (bgPage && !(clipCanvas && clipCanvas.length === 0)) {
       // Lienzo del diseño → pieza. En modo "piezas" se recorta además por la
       // pieza del diseño, así no entra el contorno ni el arte de otra pieza.
-      if (clipCanvas && clipCanvas.length > 2) {
+      if (clipCanvas && clipCanvas.length > 2 && !print.noBleed) {
         // Sangrado: abajo, una copia del arte de esta pieza agrandada un 6 %
         // desde su centro. Si la pieza de otro talle no coincide exacto con
         // la del diseño (sisa, ruedo), los bordes se completan con el mismo
