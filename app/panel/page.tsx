@@ -20,11 +20,7 @@ import { Badge } from "../components/ui/Badge";
 import { createClient } from "@/lib/supabase/server";
 import { Card } from "../components/ui/Card";
 import { cn } from "@/lib/cn";
-
-function isOverdue(dueDate: string | null) {
-  if (!dueDate) return false;
-  return new Date(`${dueDate}T00:00:00`) < new Date(new Date().toDateString());
-}
+import { HomeTasks, type HomeTask } from "./HomeTasks";
 
 function formatMoney(n: number) {
   return n.toLocaleString("es-AR", { style: "currency", currency: "ARS", maximumFractionDigits: 0 });
@@ -66,10 +62,10 @@ export default async function DashboardPage() {
       .limit(4),
     supabase
       .from("tasks")
-      .select("id, title, description, priority, due_date, status")
+      .select("id, title, priority, due_date, status, assigned_to, orders(order_number, team_or_group_name), profiles(full_name)")
       .neq("status", "hecha")
       .order("due_date", { ascending: true, nullsFirst: false })
-      .limit(8),
+      .limit(60),
     supabase.from("purchases").select("real_cost").gte("purchase_date", startOfMonthDate),
     supabase.from("orders").select("id, quotes(deposit_amount)").gte("deposit_paid_at", startOfMonthIso),
     supabase.from("orders").select("id, quotes(total, deposit_amount)").gte("delivered_at", startOfMonthIso),
@@ -79,7 +75,7 @@ export default async function DashboardPage() {
       .neq("status", "entregado")
       .order("estimated_delivery_date", { ascending: true, nullsFirst: false }),
     supabase.auth.getUser().then(async ({ data }) =>
-      data.user ? (await supabase.from("profiles").select("full_name").eq("id", data.user.id).single()).data : null
+      data.user ? { id: data.user.id, ...(await supabase.from("profiles").select("full_name").eq("id", data.user.id).single()).data } : null
     ),
   ]);
 
@@ -99,8 +95,19 @@ export default async function DashboardPage() {
     ["entregado", "Entregado", Truck],
   ] as const;
 
-  const tasks = tasksRaw ?? [];
-  const pendingCount = tasks.length;
+  const homeTasks: HomeTask[] = (tasksRaw ?? []).map((t) => {
+    const o = t.orders as unknown as { order_number: string; team_or_group_name: string | null } | null;
+    return {
+      id: t.id,
+      title: t.title,
+      status: t.status,
+      priority: t.priority,
+      due_date: t.due_date,
+      assignedTo: t.assigned_to,
+      assignedName: (t.profiles as unknown as { full_name: string } | null)?.full_name ?? null,
+      orderLabel: o ? o.team_or_group_name || o.order_number : null,
+    };
+  });
 
   // Costo total del mes: todo lo cargado en Compras y gastos con fecha de
   // este mes (compras con proveedor + gastos generales, ya unificados).
@@ -140,9 +147,6 @@ export default async function DashboardPage() {
     else if (d <= 10 && beforeSublim(o.status))
       todos.push({ key: o.id, tone: "orange", title: nameOf(o), detail: `${o.order_number} · entrega en ${d} ${d === 1 ? "día" : "días"} y sigue en ${orderStatusLabel(o.status).toLowerCase()}`, href: ["cerrado", "cortando", "diseno_molderia"].includes(o.status) ? `/panel/produccion/${o.id}` : `/panel/pedidos/${o.id}`, action: ["cerrado", "cortando", "diseno_molderia"].includes(o.status) ? "Ir a producción" : "Ver pedido" });
   }
-  for (const t of tasks)
-    if (t.due_date && t.due_date <= todayStr)
-      todos.push({ key: t.id, tone: "blue", title: t.title, detail: `Tarea · ${isOverdue(t.due_date) ? "vencida" : "vence hoy"}`, href: "/panel/tareas", action: "Ver tarea" });
   const TONE = { red: "bg-red-50 text-red-700", orange: "bg-orange-50 text-orange-700", blue: "bg-[#E8EEF8] text-[#102C5B]" } as const;
   const weekDeliveries = (activeOrders ?? []).filter((o) => o.estimated_delivery_date && daysTo(o.estimated_delivery_date) >= 0 && daysTo(o.estimated_delivery_date) <= 7).length;
   const upcomingList = (activeOrders ?? []).filter((o) => o.estimated_delivery_date).slice(0, 6);
@@ -161,6 +165,8 @@ export default async function DashboardPage() {
           {now.toLocaleDateString("es-AR", { weekday: "long", day: "numeric", month: "long" })} · esto es lo que necesita atención hoy.
         </p>
       </div>
+
+      <HomeTasks tasks={homeTasks} todayStr={todayStr} userId={profile?.id ?? null} />
 
       {/* Pedidos por etapa: cada una lleva a la lista filtrada. */}
       <Card className="p-5">
@@ -188,10 +194,10 @@ export default async function DashboardPage() {
       <div className="grid gap-6 lg:grid-cols-[3fr_2fr]">
         <Card className="overflow-hidden p-0">
           <div className="flex items-center gap-2 px-5 py-4">
-            <h2 className="text-sm font-bold text-zinc-900">Para hacer hoy</h2>
+            <h2 className="text-sm font-bold text-zinc-900">Pedidos que piden atención</h2>
             {todos.some((t) => t.tone === "red") && <span className="rounded-md bg-red-50 px-2 py-0.5 text-xs font-semibold text-red-700">Hay atrasados</span>}
-            <Link href="/panel/tareas" className="ml-auto text-sm font-medium text-[#102C5B] hover:underline">
-              Tareas ({pendingCount})
+            <Link href="/panel/pedidos" className="ml-auto text-sm font-medium text-[#102C5B] hover:underline">
+              Pedidos
             </Link>
           </div>
           {todos.length ? (
@@ -212,7 +218,7 @@ export default async function DashboardPage() {
               ))}
             </ul>
           ) : (
-            <p className="border-t border-zinc-100 px-5 py-6 text-sm text-zinc-500">Nada urgente: no hay pedidos atrasados ni tareas que venzan hoy.</p>
+            <p className="border-t border-zinc-100 px-5 py-6 text-sm text-zinc-500">Nada urgente: no hay pedidos atrasados ni con la entrega encima.</p>
           )}
         </Card>
 
