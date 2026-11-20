@@ -65,8 +65,8 @@ export default async function ProduccionPedidoPage({ params }: { params: Promise
   return (
     <div>
       <PageHeader
-        title={`Producción · ${order.order_number}`}
-        description={order.team_or_group_name || order.contact_name || undefined}
+        title={order.team_or_group_name || order.contact_name || order.order_number}
+        description={`${order.order_number} · Producción`}
         action={
           <div className="flex items-center gap-3">
             <Badge status={order.status} />

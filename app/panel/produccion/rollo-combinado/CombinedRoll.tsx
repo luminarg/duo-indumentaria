@@ -292,8 +292,8 @@ export function CombinedRoll({
                     <input type="checkbox" disabled={!r.design} checked={selected.has(r.id)} onChange={() => toggle(r.id)} aria-label={`Incluir ${r.order.number} ${r.label}`} />
                   </td>
                   <td className="px-2 py-2">
-                    <div className="font-medium text-zinc-900">{r.order.number}</div>
-                    <div className="text-xs text-zinc-500">{r.order.name}</div>
+                    <div className="font-semibold text-zinc-900">{r.order.name || r.order.number}</div>
+                    <div className="text-xs text-zinc-500">{r.order.number}</div>
                   </td>
                   <td className="px-2 py-2">{r.label}</td>
                   <td className="px-2 py-2">{r.garments}</td>

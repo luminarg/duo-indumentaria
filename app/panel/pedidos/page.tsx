@@ -2,7 +2,8 @@ import { createClient } from "@/lib/supabase/server";
 import { PageHeader } from "../../components/ui/PageHeader";
 import { PedidosTable } from "./PedidosTable";
 
-export default async function PedidosPage() {
+export default async function PedidosPage({ searchParams }: { searchParams: Promise<{ q?: string }> }) {
+  const { q } = await searchParams;
   const supabase = await createClient();
   const { data: orders } = await supabase
     .from("orders")
@@ -17,7 +18,7 @@ export default async function PedidosPage() {
         title="Pedidos"
         description="Los pedidos nacen desde un presupuesto aprobado. Andá a Presupuestos para generar uno nuevo."
       />
-      <PedidosTable orders={orders ?? []} siteUrl={siteUrl} />
+      <PedidosTable orders={orders ?? []} siteUrl={siteUrl} initialQuery={q ?? ""} />
     </div>
   );
 }

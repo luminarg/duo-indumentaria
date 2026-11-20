@@ -70,8 +70,8 @@ export default async function OrderDetailPage({
   return (
     <div>
       <PageHeader
-        title={`Pedido ${order.order_number}`}
-        description={`Link para el cliente: ${orderLink}`}
+        title={order.team_or_group_name || order.contact_name || `Pedido ${order.order_number}`}
+        description={`${order.order_number} · Link para el cliente: ${orderLink}`}
         action={
           <div className="flex items-center gap-2">
             <ShareOrderLink

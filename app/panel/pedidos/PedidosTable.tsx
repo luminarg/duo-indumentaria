@@ -25,8 +25,8 @@ function formatDate(iso: string | null) {
   return new Date(`${iso}T00:00:00`).toLocaleDateString("es-AR", { day: "2-digit", month: "2-digit", year: "numeric" });
 }
 
-export function PedidosTable({ orders, siteUrl }: { orders: Order[]; siteUrl: string }) {
-  const [query, setQuery] = useState("");
+export function PedidosTable({ orders, siteUrl, initialQuery = "" }: { orders: Order[]; siteUrl: string; initialQuery?: string }) {
+  const [query, setQuery] = useState(initialQuery);
 
   const filtered = useMemo(() => {
     const q = query.trim().toLowerCase();
@@ -43,7 +43,7 @@ export function PedidosTable({ orders, siteUrl }: { orders: Order[]; siteUrl: st
       <SearchInput
         value={query}
         onChange={setQuery}
-        placeholder="Buscar por número, cliente o estado..."
+        placeholder="Buscar por equipo, cliente, número o estado..."
       />
 
       {filtered.length > 0 ? (
@@ -51,26 +51,24 @@ export function PedidosTable({ orders, siteUrl }: { orders: Order[]; siteUrl: st
           <table className="w-full text-left text-sm">
             <thead>
               <tr className="border-b border-zinc-200 text-zinc-500">
-                <th className="px-5 py-3 font-medium">N°</th>
-                <th className="px-5 py-3 font-medium">Cliente</th>
+                <th className="px-5 py-3 font-medium">Pedido</th>
                 <th className="px-5 py-3 font-medium">Estado</th>
                 <th className="px-5 py-3 font-medium">Entrega aprox.</th>
-                <th className="px-5 py-3 font-medium">Link</th>
+                <th className="px-5 py-3 font-medium">Link del cliente</th>
               </tr>
             </thead>
             <tbody>
               {filtered.map((order) => (
                 <tr key={order.id} className="border-b border-zinc-100 last:border-0 hover:bg-white/40">
                   <td className="px-5 py-3">
-                    <Link
-                      href={`/panel/pedidos/${order.id}`}
-                      className="font-medium text-zinc-900 hover:underline"
-                    >
-                      {order.order_number}
+                    {/* El nombre del equipo o cliente es lo que se reconoce; el número va chico. */}
+                    <Link href={`/panel/pedidos/${order.id}`} className="block text-base font-semibold text-zinc-900 hover:underline">
+                      {order.team_or_group_name || order.contact_name || order.order_number}
                     </Link>
-                  </td>
-                  <td className="px-5 py-3 text-zinc-600">
-                    {order.team_or_group_name || order.contact_name || "—"}
+                    <span className="text-xs text-zinc-500">
+                      {order.order_number}
+                      {order.team_or_group_name && order.contact_name ? ` · ${order.contact_name}` : ""}
+                    </span>
                   </td>
                   <td className="px-5 py-3">
                     <div className="flex flex-wrap items-center gap-1.5">
@@ -80,9 +78,7 @@ export function PedidosTable({ orders, siteUrl }: { orders: Order[]; siteUrl: st
                   </td>
                   <td className="px-5 py-3 text-zinc-600">{formatDate(order.estimated_delivery_date)}</td>
                   <td className="px-5 py-3">
-                    <code className="text-xs text-zinc-400">
-                      {siteUrl}/pedido/{order.public_token}
-                    </code>
+                    <CopyLink url={`${siteUrl}/pedido/${order.public_token}`} />
                   </td>
                 </tr>
               ))}
@@ -99,5 +95,25 @@ export function PedidosTable({ orders, siteUrl }: { orders: Order[]; siteUrl: st
         />
       )}
     </div>
+  );
+}
+
+function CopyLink({ url }: { url: string }) {
+  const [done, setDone] = useState(false);
+  return (
+    <button
+      type="button"
+      title={url}
+      onClick={async () => {
+        try {
+          await navigator.clipboard.writeText(url);
+          setDone(true);
+          setTimeout(() => setDone(false), 1500);
+        } catch {}
+      }}
+      className="rounded-md border border-zinc-200 px-2.5 py-1 text-xs font-medium text-zinc-700 hover:bg-zinc-50"
+    >
+      {done ? "¡Copiado!" : "Copiar link"}
+    </button>
   );
 }
