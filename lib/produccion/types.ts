@@ -13,7 +13,28 @@ export type BBox = { minX: number; minY: number; maxX: number; maxY: number };
 
 import type { TemplateSpec } from "./templates";
 
-export type PieceKind = "frente" | "espalda" | "manga_izq" | "manga_der" | "otra";
+export type PieceKind = "frente" | "espalda" | "manga_izq" | "manga_der" | "pierna_izq" | "pierna_der" | "otra";
+
+/**
+ * Short: cada pierna es una sola pieza (delantero y trasero juntos, el costado
+ * al medio). Vista desde afuera, el delantero de la pierna izquierda de quien
+ * la usa queda a la IZQUIERDA del dibujo y el de la derecha, a la DERECHA; el
+ * tiro trasero (la cintura más alta) queda del otro lado.
+ */
+export const LEG_KINDS = ["pierna_izq", "pierna_der"] as const;
+export const isLeg = (k: PieceKind) => k === "pierna_izq" || k === "pierna_der";
+/** Lado del dibujo donde está el delantero de cada pierna. */
+export const legFrontSide = (k: PieceKind): "min" | "max" => (k === "pierna_izq" ? "min" : "max");
+
+export const PIECE_LABELS: Record<PieceKind, string> = {
+  frente: "Frente",
+  espalda: "Espalda",
+  manga_izq: "Manga izquierda",
+  manga_der: "Manga derecha",
+  pierna_izq: "Pierna izquierda",
+  pierna_der: "Pierna derecha",
+  otra: "Otra",
+};
 
 export type PatternPiece = {
   id: string;
@@ -90,6 +111,10 @@ export type NumberRule = {
   frontFromShoulderTopUnits?: number;
   frontSide?: WearerSide;
   frontFromSideUnits?: number;
+  /** Número en el short (si pieceKinds incluye una pierna): va en el delantero de la pierna. */
+  shortHeightMm?: Record<SizeGroup, number>;
+  /** Centro del número del short, en unidades desde la cintura (punto más alto). */
+  shortFromTopUnits?: number;
   style: TextStyle;
 };
 

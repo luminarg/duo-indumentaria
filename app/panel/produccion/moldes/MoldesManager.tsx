@@ -20,6 +20,8 @@ const KINDS: { value: PieceKind; label: string }[] = [
   { value: "espalda", label: "Espalda" },
   { value: "manga_izq", label: "Manga izquierda" },
   { value: "manga_der", label: "Manga derecha" },
+  { value: "pierna_izq", label: "Short: pierna izquierda" },
+  { value: "pierna_der", label: "Short: pierna derecha" },
   { value: "otra", label: "Otra / no usar" },
 ];
 

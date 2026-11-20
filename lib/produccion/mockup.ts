@@ -112,6 +112,11 @@ export function mockupLayout(prints: PrintPiece[], opts: { angleDeg?: number; ga
   // De frente, la manga izquierda de quien la usa está a la derecha del dibujo; de espalda, a la izquierda.
   view("FRENTE", front, "max");
   view("ESPALDA", back, "min");
+  // Short: cada pierna abierta, como se ve desde afuera.
+  for (const [kind, title] of [["pierna_der", "PIERNA DERECHA"], ["pierna_izq", "PIERNA IZQUIERDA"]] as const) {
+    const leg = byKind.get(kind);
+    if (leg) views.push({ title, items: [{ print: leg, transform: { a: 1, b: 0, c: 0, d: 1, e: 0, f: 0 } }], fills: [] });
+  }
 
   // Ubicar las vistas una al lado de la otra, alineadas por el hombro.
   const boxOf = (v: MockupView) => {

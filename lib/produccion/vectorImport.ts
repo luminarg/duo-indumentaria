@@ -363,8 +363,9 @@ export function piecesFromPrimitives(prim: Primitives, minAreaMm2 = 2000): Impor
   });
 
   // Emparejar cuerpos y mangas.
-  const bodies = pieces.filter((p) => p.heightMm > p.widthMm).sort((a, b) => a.box.minY - b.box.minY || a.box.minX - b.box.minX);
-  const sleeves = pieces.filter((p) => p.heightMm <= p.widthMm).sort((a, b) => a.box.minX - b.box.minX || a.box.minY - b.box.minY);
+  // Las piernas de short se emparejan como los cuerpos (una al lado de la otra).
+  const bodies = pieces.filter((p) => p.heightMm > p.widthMm || isLegShape(p)).sort((a, b) => a.box.minY - b.box.minY || a.box.minX - b.box.minX);
+  const sleeves = pieces.filter((p) => p.heightMm <= p.widthMm && !isLegShape(p)).sort((a, b) => a.box.minX - b.box.minX || a.box.minY - b.box.minY);
   const pairUp = (list: ImportedPiece[], near: (a: ImportedPiece, b: ImportedPiece) => boolean) => {
     const used = new Set<ImportedPiece>();
     const pairs: ImportedPiece[][] = [];
@@ -450,7 +451,10 @@ export function piecesFromPrimitives(prim: Primitives, minAreaMm2 = 2000): Impor
     const label = assigned.get(g) ?? null;
     for (const p of [...g.body, ...g.sleeves]) p.sizeLabel = label;
     guessKinds([...g.body, ...g.sleeves]);
-    if (g.body.length !== 2 || g.sleeves.length !== 2) notes.push(`El talle ${label ?? "sin nombre"} tiene ${g.body.length} cuerpos y ${g.sleeves.length} mangas (se esperaban 2 y 2).`);
+    const legs = g.body.filter(isLegShape).length;
+    if (legs) {
+      if (legs !== 2 || g.body.length !== 2 || g.sleeves.length) notes.push(`El talle ${label ?? "sin nombre"} tiene ${legs} piernas de short y ${g.body.length + g.sleeves.length - legs} piezas más (se esperaban 2 piernas).`);
+    } else if (g.body.length !== 2 || g.sleeves.length !== 2) notes.push(`El talle ${label ?? "sin nombre"} tiene ${g.body.length} cuerpos y ${g.sleeves.length} mangas (se esperaban 2 y 2).`);
   }
   const missing = groups.filter((g) => !assigned.has(g)).length;
   if (missing && groups.length > 1) notes.push(`${missing} grupos de piezas no tienen talle: asignalo a mano.`);
@@ -483,9 +487,24 @@ function dedupe(p: Poly): Poly {
  * más profundo es el frente. Las mangas: la de más arriba (o más a la
  * izquierda) es la izquierda; como son simétricas da igual.
  */
+/**
+ * Pierna de short: más ancha que alta pero casi cuadrada (una manga es mucho
+ * más ancha que alta) y grande.
+ */
+function isLegShape(p: ImportedPiece) {
+  return p.heightMm <= p.widthMm && p.heightMm >= p.widthMm * 0.7 && p.heightMm > 250;
+}
+
 export function guessKinds(list: ImportedPiece[]) {
-  const bodies = list.filter((p) => p.heightMm > p.widthMm).sort((a, b) => b.areaMm2 - a.areaMm2);
-  const sleeves = list.filter((p) => p.heightMm <= p.widthMm).sort((p, q) => p.box.minY - q.box.minY || p.box.minX - q.box.minX);
+  // En las piernas, la cintura es más alta del lado del trasero.
+  for (const leg of list.filter(isLegShape)) {
+    const top = leg.outline.reduce((t, q) => (q.y < t.y ? q : t));
+    // Trasero (lo más alto) a la izquierda del dibujo → delantero a la derecha → pierna derecha.
+    leg.kind = top.x < leg.widthMm / 2 ? "pierna_der" : "pierna_izq";
+  }
+  const rest = list.filter((p) => !isLegShape(p));
+  const bodies = rest.filter((p) => p.heightMm > p.widthMm).sort((a, b) => b.areaMm2 - a.areaMm2);
+  const sleeves = rest.filter((p) => p.heightMm <= p.widthMm).sort((p, q) => p.box.minY - q.box.minY || p.box.minX - q.box.minX);
   const neckDepth = (p: ImportedPiece) => {
     const cx = p.widthMm / 2;
     const near = p.outline.filter((q) => Math.abs(q.x - cx) < p.widthMm * 0.08);

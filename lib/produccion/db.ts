@@ -41,6 +41,12 @@ export function assemblyFromRows(rows: AssemblyRow[] | null | undefined): Assemb
   }));
 }
 
+/** Diseños guardados antes del short: si el talle iba en el frente, va también en las piernas. */
+function withLegs(tag: DesignConfig["sizeTag"]): DesignConfig["sizeTag"] {
+  if (!tag.pieceKinds.includes("frente") || tag.pieceKinds.some((k) => k === "pierna_izq" || k === "pierna_der")) return tag;
+  return { ...tag, pieceKinds: [...tag.pieceKinds, "pierna_izq", "pierna_der"] };
+}
+
 /** Completa un config guardado con los valores por defecto (por si se agregan campos nuevos). */
 export function normalizeConfig(raw: unknown, baseSizeLabel?: string): DesignConfig {
   const d = defaultDesignConfig();
@@ -52,12 +58,12 @@ export function normalizeConfig(raw: unknown, baseSizeLabel?: string): DesignCon
     background: { ...d.background, ...(c.background ?? {}) },
     number: { ...d.number, ...(c.number ?? {}) },
     name: { ...d.name, ...(c.name ?? {}) },
-    sizeTag: {
+    sizeTag: withLegs({
       ...d.sizeTag,
       ...(c.sizeTag ?? {}),
       // Diseños guardados con la versión vieja (3 × 7 cm) pasan a la regla nueva.
       ...(c.sizeTag && !("corner" in c.sizeTag) ? { corner: d.sizeTag.corner, marginMm: d.sizeTag.marginMm, heightMm: d.sizeTag.heightMm } : {}),
-    },
+    }),
     sizeIndicator: { ...d.sizeIndicator, ...(c.sizeIndicator ?? {}) },
     collars: { ...d.collars, ...(c.collars ?? {}) },
     elements: c.elements ?? d.elements,

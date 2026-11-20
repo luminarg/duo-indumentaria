@@ -829,3 +829,45 @@ describe("banderas (piezas sueltas a medida)", () => {
     expect(p.noBleed).toBe(true);
   });
 });
+
+import { guessKinds, type ImportedPiece } from "./vectorImport";
+
+describe("short", () => {
+  // Pierna derecha vista desde afuera: trasero (cintura más alta) a la izquierda.
+  const legDer = [
+    { x: 140, y: 0 }, { x: 760, y: 60 }, { x: 780, y: 360 }, { x: 850, y: 470 },
+    { x: 800, y: 710 }, { x: 25, y: 710 }, { x: 0, y: 470 }, { x: 70, y: 360 },
+  ];
+  const legIzq = legDer.map((p) => ({ x: 850 - p.x, y: p.y })).reverse();
+  const pieces: PatternPiece[] = [
+    { id: "d", modelId: "s", sizeLabel: "M", kind: "pierna_der", outline: legDer },
+    { id: "i", modelId: "s", sizeLabel: "M", kind: "pierna_izq", outline: legIzq },
+  ];
+
+  it("reconoce las piernas y cuál es cuál", () => {
+    const imp = [legDer, legIzq].map((outline, k) => ({ outline, kind: "otra", widthMm: 850, heightMm: 710, areaMm2: 1, box: { minX: k * 900, minY: 0, maxX: k * 900 + 850, maxY: 710 }, sizeLabel: null })) as unknown as ImportedPiece[];
+    guessKinds(imp);
+    expect(imp.map((p) => p.kind)).toEqual(["pierna_der", "pierna_izq"]);
+  });
+
+  it("arma las piernas una al lado de la otra aunque el modelo solo tenga reglas de remera", () => {
+    const remeraRules = DEFAULT_ASSEMBLY.filter((r) => !r.kind.startsWith("pierna"));
+    const t = assemblyTransforms(pieces, remeraRules, 1);
+    const d = t.get("d")!, i = t.get("i")!;
+    expect(d.e).toBeCloseTo(-425, 1); // centrada en el origen
+    expect(i.e).toBeCloseTo(425, 1); // pegada a su derecha
+    expect(d.f).toBeCloseTo(i.f, 5); // misma línea de base
+  });
+
+  it("el número del short va en el delantero de la pierna", () => {
+    const design = { ...defaultDesignConfig(), elements: [] };
+    design.number = { ...design.number, pieceKinds: ["espalda", "pierna_izq"] };
+    const { prints } = buildPrintPieces({ pieces, assembly: DEFAULT_ASSEMBLY, design, garments: [{ orderItemId: "a", sizeLabel: "M", number: "10", variant: "jugador" }], measure: approxMeasurer });
+    const izq = prints.find((p) => p.piece.kind === "pierna_izq")!;
+    const der = prints.find((p) => p.piece.kind === "pierna_der")!;
+    const num = izq.texts.find((t) => t.kind === "numero")!;
+    expect(num.center.x).toBeLessThan(425); // delantero de la izquierda = mitad izquierda del dibujo
+    expect(der.texts.some((t) => t.kind === "numero")).toBe(false);
+    expect(izq.texts.some((t) => t.kind === "talle")).toBe(true);
+  });
+});

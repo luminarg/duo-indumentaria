@@ -151,7 +151,7 @@ export function DtfSheet() {
     <div className="flex flex-col gap-6">
       <Card className="flex flex-col gap-3">
         <h2 className="text-sm font-medium text-zinc-900">Papel</h2>
-        <div className="flex flex-wrap items-end gap-3">
+        <div className="hint-float flex flex-wrap items-end gap-x-3 gap-y-6 pb-4">
           <div className="w-56">
             <Select label="Papel" value={paper} onChange={(e) => { setPaper(e.target.value); setLayout(null); }}>
               {PAPERS.map((p) => (

@@ -9,7 +9,7 @@ import { Button } from "../../components/ui/Button";
 
 const pathD = (poly: Poly) => (poly.length ? "M" + poly.map((p) => `${p.x.toFixed(1)} ${p.y.toFixed(1)}`).join(" L") + " Z" : "");
 
-const KIND_COLORS: Record<string, string> = { frente: "#dbeafe", espalda: "#dcfce7", manga_izq: "#fef3c7", manga_der: "#fde68a", otra: "#e4e4e7" };
+const KIND_COLORS: Record<string, string> = { frente: "#dbeafe", espalda: "#dcfce7", manga_izq: "#fef3c7", manga_der: "#fde68a", pierna_izq: "#ede9fe", pierna_der: "#ddd6fe", otra: "#e4e4e7" };
 
 /**
  * Vista del rollo con retoque a mano: tocar una pieza la selecciona,

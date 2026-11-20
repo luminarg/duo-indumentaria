@@ -7,7 +7,7 @@ import { Input, Select } from "../../components/ui/Input";
 import { freePiecePrints, readFreeFile, type FreeFile, type FreePiece } from "@/lib/produccion/freePieces";
 import type { PrintPiece } from "@/lib/produccion/types";
 
-const KIND: Record<string, string> = { frente: "Frente", espalda: "Espalda", manga_izq: "Manga izq.", manga_der: "Manga der.", otra: "Pieza" };
+const KIND: Record<string, string> = { frente: "Frente", espalda: "Espalda", manga_izq: "Manga izq.", manga_der: "Manga der.", pierna_izq: "Pierna izq.", pierna_der: "Pierna der.", otra: "Pieza" };
 
 /**
  * Piezas sueltas para sumar al rollo: un archivo con su medida (bandera,

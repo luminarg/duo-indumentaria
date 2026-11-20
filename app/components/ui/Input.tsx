@@ -12,10 +12,10 @@ function FieldWrapper({
 }) {
   if (!label) return <>{children}</>;
   return (
-    <label className="flex flex-col gap-1 text-xs font-medium text-zinc-500">
+    <label className="relative flex flex-col gap-1 text-xs font-medium text-zinc-500">
       {label}
       {children}
-      {hint && <span className="text-[11px] font-normal text-zinc-400">{hint}</span>}
+      {hint && <span className="field-hint text-[11px] font-normal text-zinc-400">{hint}</span>}
     </label>
   );
 }

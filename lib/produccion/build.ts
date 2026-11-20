@@ -15,6 +15,7 @@ import type {
   TextStyle,
   Warning,
 } from "./types";
+import { isLeg, legFrontSide } from "./types";
 
 /** Ancho en mm de un texto con alto de mayúsculas `capHeightMm`. */
 export const DEFAULT_FONT = "Helvetica-Bold";
@@ -209,7 +210,16 @@ export function buildPrintPieces({ pieces, assembly, design, garments, measure }
 
       // Número
       const nr = design.number;
-      if (nr.enabled && g.number && nr.pieceKinds.includes(piece.kind)) {
+      if (nr.enabled && g.number && nr.pieceKinds.includes(piece.kind) && isLeg(piece.kind)) {
+        // Short: en el delantero de la pierna, a mitad de camino entre el
+        // costado (centro de la pieza) y la entrepierna.
+        const h = nr.shortHeightMm?.[group] ?? 100;
+        const y = yFromShoulderTop(piece, nr.shortFromTopUnits ?? 6);
+        const x = (centerX + (legFrontSide(piece.kind) === "min" ? b.minX : b.maxX)) / 2;
+        const fit = fitText(g.number, nr.style, h, availableWidth(piece, y, x, design.safeMarginMm), measure);
+        texts.push({ kind: "numero", text: g.number, center: { x, y }, heightMm: fit.heightMm, widthMm: fit.widthMm, style: nr.style });
+        if (fit.shrunk) pieceWarnings.push({ pieceId: piece.id, message: `El número ${g.number} del short se achicó a ${fit.heightMm.toFixed(0)} mm en talle ${piece.sizeLabel}` });
+      } else if (nr.enabled && g.number && nr.pieceKinds.includes(piece.kind)) {
         const isFront = piece.kind === "frente";
         const h = (isFront ? nr.frontHeightMm : undefined)?.[group] ?? nr.heightMm[group];
         const y = yFromShoulderTop(piece, isFront ? (nr.frontFromShoulderTopUnits ?? nr.fromShoulderTopUnits) : nr.fromShoulderTopUnits);

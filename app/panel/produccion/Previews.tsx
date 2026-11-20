@@ -14,6 +14,8 @@ const KIND_LABEL: Record<string, string> = {
   espalda: "Espalda",
   manga_izq: "Manga izq.",
   manga_der: "Manga der.",
+  pierna_izq: "Pierna izq.",
+  pierna_der: "Pierna der.",
   otra: "Pieza",
 };
 

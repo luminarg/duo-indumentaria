@@ -318,8 +318,8 @@ export function CombinedRoll({
       />
 
       <Card className="flex flex-col gap-3">
-        <div className="flex flex-wrap items-end gap-3">
-          <h2 className="mr-auto text-sm font-medium text-zinc-900">Rollo · {chosen.length} {chosen.length === 1 ? "prenda elegida" : "prendas elegidas"}</h2>
+        <div className="hint-float flex flex-wrap items-end gap-x-3 gap-y-6 pb-4">
+          <h2 className="mr-auto self-center text-sm font-medium text-zinc-900">Rollo · {chosen.length} {chosen.length === 1 ? "prenda elegida" : "prendas elegidas"}</h2>
           <div className="w-32">
             <FabricWidthInput mm={fabricMm} onChange={(v) => { setFabricMm(v); setLayout(null); }} />
           </div>

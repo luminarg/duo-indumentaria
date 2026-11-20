@@ -37,6 +37,8 @@ export function defaultDesignConfig(): DesignConfig {
       frontFromShoulderTopUnits: 3.5,
       frontSide: "derecha",
       frontFromSideUnits: 2.5,
+      shortHeightMm: { adulto: 100, nino: 80 }, // SUPUESTO
+      shortFromTopUnits: 6, // SUPUESTO: abajo en el delantero
       style: { font: "Helvetica-Bold", fill: "#141414" },
     },
     name: {
@@ -48,7 +50,7 @@ export function defaultDesignConfig(): DesignConfig {
     },
     sizeTag: {
       enabled: true,
-      pieceKinds: ["frente", "espalda", "manga_izq", "manga_der"],
+      pieceKinds: ["frente", "espalda", "manga_izq", "manga_der", "pierna_izq", "pierna_der"],
       corner: "derecha", // esquina de la base, contra el borde, dentro del ruedo
       marginMm: 1, // adentro de la línea: no pisa el contorno negro
       heightMm: 5, // como en el diseño de Talleres

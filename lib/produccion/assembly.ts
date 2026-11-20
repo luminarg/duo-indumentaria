@@ -25,7 +25,16 @@ export const DEFAULT_ASSEMBLY: AssemblyRule[] = [
   { kind: "espalda", alignMode: "beside", alignToKind: "frente", offsetX: 0, offsetY: 0 },
   { kind: "manga_izq", alignMode: "shoulder", alignToKind: "frente", offsetX: 0, offsetY: 0 },
   { kind: "manga_der", alignMode: "shoulder", alignToKind: "frente", offsetX: 0, offsetY: 0 },
+  // Short: las dos piernas una al lado de la otra sobre la línea de base, como
+  // se dibujan en Corel (la derecha de quien usa a la izquierda del dibujo).
+  { kind: "pierna_der", alignMode: "baseline", offsetX: 0, offsetY: 0 },
+  { kind: "pierna_izq", alignMode: "beside", alignToKind: "pierna_der", offsetX: 0, offsetY: 0 },
 ];
+
+/** Reglas del modelo + las de fábrica para los tipos que el modelo no define (los modelos viejos solo tienen las de remera). */
+function withDefaults(rules: AssemblyRule[]): AssemblyRule[] {
+  return [...rules, ...DEFAULT_ASSEMBLY.filter((d) => !rules.some((r) => r.kind === d.kind))];
+}
 
 /**
  * Punta del hombro (donde termina la costura de hombro, arriba de la sisa) del
@@ -47,7 +56,9 @@ function sleeveSideOnFront(kind: PieceKind): "min" | "max" {
 
 /** Escala del talle respecto del talle base, por el ancho del frente. */
 export function sizeScale(piecesOfSize: PatternPiece[], basePieces: PatternPiece[]): number {
-  const ref = (list: PatternPiece[]) => list.find((p) => p.kind === "frente") ?? list[0];
+  // Siempre la misma pieza de referencia en todos los talles.
+  const ORDER: PieceKind[] = ["frente", "espalda", "pierna_der", "pierna_izq", "manga_izq", "manga_der", "otra"];
+  const ref = (list: PatternPiece[]) => [...list].sort((p, q) => ORDER.indexOf(p.kind) - ORDER.indexOf(q.kind))[0];
   const a = ref(piecesOfSize);
   const b = ref(basePieces);
   if (!a || !b) return 1;
@@ -55,7 +66,8 @@ export function sizeScale(piecesOfSize: PatternPiece[], basePieces: PatternPiece
 }
 
 /** Transformación pieza → espacio armado, para cada pieza de un talle. */
-export function assemblyTransforms(pieces: PatternPiece[], rules: AssemblyRule[], scale: number): Map<string, Affine> {
+export function assemblyTransforms(pieces: PatternPiece[], modelRules: AssemblyRule[], scale: number): Map<string, Affine> {
+  const rules = withDefaults(modelRules);
   const byKind = new Map(pieces.map((p) => [p.kind, p]));
   const out = new Map<string, Affine>();
   const front = byKind.get("frente");

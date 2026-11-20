@@ -200,3 +200,13 @@ body {
 .no-scrollbar::-webkit-scrollbar {
   display: none;
 }
+
+/* En filas de controles alineadas abajo, la ayuda bajo un campo no debe
+   empujarlo hacia arriba: queda flotando debajo sin ocupar alto. */
+.hint-float .field-hint {
+  position: absolute;
+  top: 100%;
+  left: 0;
+  margin-top: 2px;
+  white-space: nowrap;
+}

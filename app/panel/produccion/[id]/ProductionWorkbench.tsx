@@ -34,6 +34,7 @@ import { FabricWidthInput } from "../FabricWidthInput";
 import { sampleMolds } from "@/lib/produccion/sampleMolds";
 import { DEFAULT_ASSEMBLY } from "@/lib/produccion/assembly";
 import type { AnchoredElement, DesignConfig, PieceKind, PrintPiece, RollLayout, TextAlign, TextRotation, WearerSide } from "@/lib/produccion/types";
+import { isLeg } from "@/lib/produccion/types";
 import { deleteDesignTemplate, listDesignTemplates, listProductionFonts, saveDesignTemplate, saveDesign, saveJob, saveJobLayout, saveLayout, signedProductionUrls } from "../actions";
 import { downloadProductionFiles, uploadFont, uploadToProduction } from "../upload";
 import { PiecePreview, type FontInfo } from "../Previews";
@@ -300,7 +301,7 @@ export function ProductionWorkbench(props: {
     for (const [size] of countBySize) {
       const g = garments.find((x) => x.sizeLabel === size && (x.name || x.number)) ?? garments.find((x) => x.sizeLabel === size);
       if (!g) continue;
-      const prints = build.prints.filter((p) => p.garment.orderItemId === g.orderItemId && (p.piece.kind === "frente" || p.piece.kind === "espalda"));
+      const prints = build.prints.filter((p) => p.garment.orderItemId === g.orderItemId && (p.piece.kind === "frente" || p.piece.kind === "espalda" || isLeg(p.piece.kind)));
       if (prints.length) out.push({ size, prints });
     }
     return out;
@@ -503,11 +504,12 @@ export function ProductionWorkbench(props: {
       const g = garments.find((x) => x.orderItemId === mockGarment) ?? garments[0];
       if (!g) throw new Error("No hay prendas para mostrar.");
       const one = buildPrintPieces({ pieces, assembly, design: designConfig, garments: [g], measure }).prints;
-      if (!one.some((p) => p.piece.kind === "frente")) throw new Error("El molde no tiene frente en ese talle.");
+      const isShort = !one.some((p) => p.piece.kind === "frente") && one.some((p) => isLeg(p.piece.kind));
+      if (!isShort && !one.some((p) => p.piece.kind === "frente")) throw new Error("El molde no tiene frente en ese talle.");
       const exportAssets = await collectExportAssets();
       let png: Blob;
       let pdf: Uint8Array | null = null;
-      if (mockStyle !== "plano") {
+      if (mockStyle !== "plano" && !isShort) {
         // Foto: cada pieza con su arte → sobre la plantilla de remera (frente y espalda).
         const MARGIN = 120, PPM = 4;
         const pagesPdf = await exportPiecePages(one, designConfig.background, exportAssets, { marginMm: MARGIN, bleedMm: MARGIN - 5 });
@@ -541,7 +543,7 @@ export function ProductionWorkbench(props: {
       if (mockup) URL.revokeObjectURL(mockup.url);
       const name = `mockup-${orderId.slice(0, 8)}-${g.sizeLabel}${g.number ? "-" + g.number : ""}`;
       setMockup({ png, url: URL.createObjectURL(png), pdf, name });
-      setMessage("Mockup listo: frente y espalda con el diseño real.");
+      setMessage(isShort ? "Mockup del short listo (piernas planas: todavía no hay foto de short)." : "Mockup listo: frente y espalda con el diseño real.");
     });
   const onSaveMockup = () =>
     run("Guardando el mockup en el pedido…", async () => {
@@ -716,7 +718,7 @@ export function ProductionWorkbench(props: {
       )}
 
       <div className="grid gap-6 lg:grid-cols-[380px_1fr]">
-        <DesignForm config={config} update={update} onBackground={onBackground} onElementFile={onElementFile} onIndicatorFile={onIndicatorFile} fonts={fontList} onFontFile={onFontFile} onCollarFile={onCollarFile} garmentCount={garments.length}
+        <DesignForm config={config} update={update} onBackground={onBackground} onElementFile={onElementFile} onIndicatorFile={onIndicatorFile} fonts={fontList} onFontFile={onFontFile} onCollarFile={onCollarFile} garmentCount={garments.length} hasLegs={pieces.some((p) => isLeg(p.kind))}
           template={{ canvas, custom: customTemplates, onUpload: onTemplateUpload, onDelete: onTemplateDelete }} />
 
         <div className="flex flex-col gap-4">
@@ -807,8 +809,8 @@ export function ProductionWorkbench(props: {
           <FreePieces prints={build.prints} usableWidthMm={fabricMm - 2 * DEFAULT_SETTINGS.edgeMarginMm} onChange={(x) => { setExtra(x); setLayout(null); }} />
 
           <Card>
-            <div className="mb-3 flex flex-wrap items-center gap-3">
-              <h2 className="mr-auto text-sm font-medium text-zinc-900">Rollo</h2>
+            <div className="hint-float mb-3 flex flex-wrap items-end gap-x-3 gap-y-6 pb-4">
+              <h2 className="mr-auto self-center text-sm font-medium text-zinc-900">Rollo</h2>
               <div className="w-32">
                 <FabricWidthInput mm={fabricMm} onChange={(v) => { setFabricMm(v); setLayout(null); }} />
               </div>
@@ -937,6 +939,8 @@ const PIECE_OPTIONS: { value: PieceKind; label: string }[] = [
   { value: "espalda", label: "Espalda" },
   { value: "manga_izq", label: "Manga izquierda" },
   { value: "manga_der", label: "Manga derecha" },
+  { value: "pierna_izq", label: "Short: pierna izquierda" },
+  { value: "pierna_der", label: "Short: pierna derecha" },
 ];
 
 const SIDE_OPTIONS: { value: WearerSide; label: string }[] = [
@@ -956,6 +960,7 @@ function DesignForm({
   onCollarFile,
   garmentCount,
   template,
+  hasLegs,
 }: {
   config: DesignConfig;
   update: (fn: (c: DesignConfig) => DesignConfig) => void;
@@ -966,6 +971,7 @@ function DesignForm({
   onFontFile: (f: File) => Promise<string | null>;
   onCollarFile: (f: File) => void;
   garmentCount: number;
+  hasLegs: boolean;
   template: { canvas: CanvasInfo; custom: CustomTemplate[]; onUpload: (f: File, name: string) => void; onDelete: (id: string) => void };
 }) {
   const fontSelect = (label: string, value: string | undefined, set: (font: string) => void) => (
@@ -1137,12 +1143,37 @@ function DesignForm({
                 onChange={(e) =>
                   update((c) => ({
                     ...c,
-                    number: { ...c.number, pieceKinds: e.target.checked ? ["espalda", "frente"] : ["espalda"] },
+                    number: { ...c.number, pieceKinds: [...c.number.pieceKinds.filter((k) => k !== "frente"), ...(e.target.checked ? (["frente"] as PieceKind[]) : [])] },
                   }))
                 }
               />
               También en el frente
             </label>
+            {hasLegs && (
+              <>
+                <Select
+                  label="En el short"
+                  value={(["pierna_izq", "pierna_der"] as const).filter((k) => config.number.pieceKinds.includes(k)).join(",") || "no"}
+                  onChange={(e) =>
+                    update((c) => ({
+                      ...c,
+                      number: {
+                        ...c.number,
+                        pieceKinds: [...c.number.pieceKinds.filter((k) => !isLeg(k)), ...(e.target.value === "no" ? [] : (e.target.value.split(",") as PieceKind[]))],
+                      },
+                    }))
+                  }
+                >
+                  <option value="no">Sin número</option>
+                  <option value="pierna_izq">Pierna izquierda</option>
+                  <option value="pierna_der">Pierna derecha</option>
+                  <option value="pierna_izq,pierna_der">Las dos piernas</option>
+                </Select>
+                <Num label="Alto en el short, adulto (mm)" value={config.number.shortHeightMm?.adulto ?? 100} onChange={(n) => update((c) => ({ ...c, number: { ...c.number, shortHeightMm: { adulto: n, nino: c.number.shortHeightMm?.nino ?? 80 } } }))} />
+                <Num label="Alto en el short, niño (mm)" value={config.number.shortHeightMm?.nino ?? 80} onChange={(n) => update((c) => ({ ...c, number: { ...c.number, shortHeightMm: { adulto: c.number.shortHeightMm?.adulto ?? 100, nino: n } } }))} />
+                <Num label="Centro en el short, unidades desde la cintura" step={0.1} value={config.number.shortFromTopUnits ?? 6} onChange={(n) => update((c) => ({ ...c, number: { ...c.number, shortFromTopUnits: n } }))} hint="Va en el delantero de la pierna" />
+              </>
+            )}
           </div>
         )}
         <label className="flex items-center gap-2 text-sm font-medium text-zinc-900">
