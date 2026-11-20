@@ -7,7 +7,7 @@ import { PanelShell } from "./PanelShell";
 // whats_new_seen_at anterior a esto (o nunca vio nada), le mostramos el
 // aviso de "Qué hay de nuevo" una vez. Para la próxima tanda, alcanza con
 // mover esta fecha hacia adelante.
-const WHATS_NEW_RELEASE_AT = "2026-08-13T00:00:00Z";
+const WHATS_NEW_RELEASE_AT = "2026-11-20T14:30:00Z";
 
 // Metadata específica de /panel (PWA) — al vivir en este layout anidado en
 // vez del layout raíz, solo se aplica dentro de /panel/* y no afecta al
