@@ -134,7 +134,9 @@ async function createPainter(doc: PDFDocument, background: BackgroundRule, asset
   doc.registerFontkit(fontkit);
   const helvetica = await doc.embedFont(StandardFonts.HelveticaBold);
   const fonts: Record<string, PDFFont> = { "Helvetica-Bold": helvetica };
-  for (const [name, bytes] of Object.entries(assets.fonts ?? {})) fonts[name] = await doc.embedFont(bytes, { subset: true });
+  // Fuente entera, sin recortar: el recorte de fontkit falla con algunas
+  // fuentes ("value" argument is out of bounds al guardar) y rompe el PDF.
+  for (const [name, bytes] of Object.entries(assets.fonts ?? {})) fonts[name] = await doc.embedFont(bytes, { subset: false });
 
   const bgPages: Record<string, PDFEmbeddedPage> = {};
   for (const [path, bytes] of Object.entries(assets.backgrounds ?? {})) bgPages[path] = await embedAsGroup(doc, bytes);
