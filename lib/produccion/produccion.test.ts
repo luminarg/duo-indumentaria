@@ -749,3 +749,56 @@ describe("letra del indicador de talle", () => {
     expect(tag!.align).toBe("inicio");
   });
 });
+
+import { packDtf, pngWithDpi, exportDtfPdf } from "./dtf";
+describe("DTF en papel", () => {
+  const s = { paperWidthMm: 580, paperHeightMm: 1000, roll: true, marginMm: 5, gapMm: 5, allowRotate: true };
+  it("acomoda sin pisarse, con la distancia mínima y adentro del papel", () => {
+    const L = packDtf(
+      [
+        { id: "esc", name: "Escudo", widthMm: 80, heightMm: 95, qty: 30 },
+        { id: "num", name: "Número", widthMm: 200, heightMm: 250, qty: 6 },
+        { id: "spo", name: "Sponsor", widthMm: 250, heightMm: 60, qty: 10 },
+      ],
+      s
+    );
+    expect(L.placed.length).toBe(46);
+    expect(L.tooBig).toEqual([]);
+    for (const p of L.placed) {
+      expect(p.x).toBeGreaterThanOrEqual(5 - 1e-6);
+      expect(p.y).toBeGreaterThanOrEqual(5 - 1e-6);
+      expect(p.x + p.w).toBeLessThanOrEqual(575 + 1e-6);
+      expect(p.y + p.h).toBeLessThanOrEqual(995 + 1e-6);
+    }
+    for (let i = 0; i < L.placed.length; i++)
+      for (let j = i + 1; j < L.placed.length; j++) {
+        const a = L.placed[i], b = L.placed[j];
+        if (a.sheet !== b.sheet) continue;
+        const sepX = Math.max(b.x - (a.x + a.w), a.x - (b.x + b.w));
+        const sepY = Math.max(b.y - (a.y + a.h), a.y - (b.y + b.h));
+        expect(Math.max(sepX, sepY)).toBeGreaterThanOrEqual(5 - 1e-6);
+      }
+    // Rollo: cada tramo se corta al largo usado.
+    expect(L.sheets.every((sh) => sh.heightMm <= 1000)).toBe(true);
+  });
+
+  it("avisa lo que no entra y pasa a otra hoja lo que sobra", () => {
+    const L = packDtf([{ id: "a", name: "Bandera", widthMm: 900, heightMm: 900, qty: 1 }, { id: "b", name: "Logo", widthMm: 270, heightMm: 400, qty: 5 }], { ...s, paperWidthMm: 297, paperHeightMm: 420, roll: false, allowRotate: false });
+    expect(L.tooBig).toEqual(["Bandera"]);
+    expect(L.placed.length).toBe(5);
+    expect(L.sheets.length).toBe(5);
+    expect(L.sheets[0]).toEqual({ widthMm: 297, heightMm: 420 });
+  });
+
+  it("PNG con 300 dpi y PDF con una página por tramo", async () => {
+    // PNG mínimo 1x1 transparente.
+    const png = Uint8Array.from(atob("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg=="), (c) => c.charCodeAt(0));
+    const out = pngWithDpi(png, 300);
+    const txt = String.fromCharCode(...out);
+    expect(txt.indexOf("pHYs")).toBe(37);
+    expect(new DataView(out.buffer).getUint32(41)).toBe(11811);
+    const L = packDtf([{ id: "p", name: "Logo", widthMm: 100, heightMm: 50, qty: 3 }], s);
+    const pdf = await PDFDocument.load(await exportDtfPdf(L, [{ id: "p", kind: "png", bytes: png }]));
+    expect(pdf.getPageCount()).toBe(1);
+  });
+});

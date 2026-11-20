@@ -12,10 +12,13 @@ import { ctxKey, orderContexts } from "@/lib/produccion/contexts";
 import { addCollarPanel } from "@/lib/produccion/collars";
 import { exportRollPdf, pdfMeasurer } from "@/lib/produccion/exportPdf";
 import { nest, DEFAULT_SETTINGS } from "@/lib/produccion/nesting";
+import { useFabricWidth } from "../useFabricWidth";
+import { FreePieces } from "../FreePieces";
+import { FabricWidthInput } from "../FabricWidthInput";
 import { validateLayout } from "@/lib/produccion/rollEdit";
 import { approxMeasurer, type TextMeasurer } from "@/lib/produccion/build";
 import type { CustomTemplate } from "@/lib/produccion/templates";
-import type { RollLayout } from "@/lib/produccion/types";
+import type { PrintPiece, RollLayout } from "@/lib/produccion/types";
 import { RollEditor } from "../RollEditor";
 import { listDesignTemplates, saveCombinedLayout } from "../actions";
 import { downloadProductionFiles, uploadToProduction } from "../upload";
@@ -24,6 +27,8 @@ type DesignRow = { id: string; order_id: string; requirement_id: string | null; 
 type Covered = { order_id: string | null; requirement_id: string | null; component_id: string | null; variant: string | null };
 export type CombinedOrder = {
   id: string;
+  /** Trabajo libre (escalado para un tercero), no un pedido. */
+  isJob?: boolean;
   number: string;
   status: string;
   name: string;
@@ -80,8 +85,11 @@ export function CombinedRoll({
 
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [panoM, setPanoM] = useState(5);
-  const [pdfLayout, setPdfLayout] = useState<"paginas" | "lado">("paginas");
+  const [pdfLayout, setPdfLayout] = useState<"paginas" | "lado">("lado");
   const [gapCm, setGapCm] = useState(50);
+  const [fabricMm, setFabricMm] = useFabricWidth();
+  const [extra, setExtra] = useState<{ prints: PrintPiece[]; files: Record<string, Uint8Array> }>({ prints: [], files: {} });
+  const [lastBuilds, setLastBuilds] = useState<PrintPiece[]>([]);
   const [layout, setLayout] = useState<RollLayout | null>(null);
   const [builds, setBuilds] = useState<{ row: Row; build: ContextBuild }[]>([]);
   const [measureFonts, setMeasureFonts] = useState<Record<string, Uint8Array>>({});
@@ -164,15 +172,16 @@ export function CombinedRoll({
         out.push({ row: r, build });
       });
       let L = nest(
-        out.flatMap((o) => o.build.prints),
-        { ...DEFAULT_SETTINGS, maxSegmentLengthMm: panoM * 1000 }
+        [...out.flatMap((o) => o.build.prints), ...extra.prints],
+        { ...DEFAULT_SETTINGS, rollWidthMm: fabricMm, maxSegmentLengthMm: panoM * 1000 }
       );
       for (const o of out) L = addCollarPanel(L, o.build.design.collars, o.build.garments.length, o.build.design.background.color);
       setBuilds(out);
+      setLastBuilds(out.flatMap((o) => o.build.prints));
       setMeasureFonts(fontBytes);
       setLayout(L);
       setMessage(
-        `Rollo armado con ${chosen.length} ${chosen.length === 1 ? "prenda" : "prendas"} de ${new Set(chosen.map((c) => c.order.id)).size} pedido(s): ${(L.lengthMm / 1000).toFixed(2)} m.` +
+        `Rollo armado con ${chosen.length} ${chosen.length === 1 ? "prenda" : "prendas"} de ${new Set(chosen.map((c) => c.order.id)).size} pedido(s) o trabajo(s): ${(L.lengthMm / 1000).toFixed(2)} m.` +
           (warnings.length ? ` Avisos: ${warnings.join(" · ")}` : "")
       );
     });
@@ -201,7 +210,7 @@ export function CombinedRoll({
     const { bytes } = await exportRollPdf(
       l,
       builds[0].build.design.background,
-      { backgrounds, elements, fonts: measureFonts },
+      { backgrounds: { ...backgrounds, ...extra.files }, elements, fonts: measureFonts },
       pdfLayout === "lado" && l.segments.length > 1 ? { sideBySide: { gapMm: gapCm * 10 } } : {}
     );
     return bytes;
@@ -229,14 +238,20 @@ export function CombinedRoll({
       const path = await uploadToProduction("rollos/combinados", new Blob([bytes as BlobPart], { type: "application/pdf" }), "pdf");
       // Pedidos que con este rollo tienen todas sus prendas: pasan a sublimación.
       const used = builds.map((b) => b.row);
-      const advance = [...new Set(used.map((r) => r.order.id))].filter((oid) =>
+      const advance = [...new Set(used.filter((r) => !r.order.isJob).map((r) => r.order.id))].filter((oid) =>
         rows.filter((r) => r.order.id === oid).every((r) => r.done || used.some((u) => u.id === r.id))
       );
       await saveCombinedLayout({
         pdfPath: path,
         lengthMm: layout.lengthMm,
         pieceCount: layout.placed.length,
-        contexts: used.map((r) => ({ orderId: r.order.id, requirementId: r.requirementId || null, componentId: r.componentId || null, variant: r.variant })),
+        contexts: used.map((r) => ({
+          orderId: r.order.isJob ? null : r.order.id,
+          jobId: r.order.isJob ? r.order.id : null,
+          requirementId: r.requirementId || null,
+          componentId: r.componentId || null,
+          variant: r.variant,
+        })),
         advanceOrderIds: advance,
       });
       setMessage(
@@ -250,7 +265,7 @@ export function CombinedRoll({
     const p = layout.placed[idx].print;
     const oid = p.garment.orderItemId.split("|")[0];
     const o = orders.find((x) => x.id === oid);
-    return `${o?.number?.replace(/^PED-\d{4}-/, "#") ?? ""} ${p.piece.sizeLabel}`;
+    return `${o?.isJob ? o.name : (o?.number?.replace(/^PED-\d{4}-/, "#") ?? "")} ${p.piece.sizeLabel}`;
   };
 
   return (
@@ -258,7 +273,7 @@ export function CombinedRoll({
       <Card className="flex flex-col gap-3 p-0">
         <div className="px-5 pt-4 text-sm font-medium text-zinc-900">Prendas para el rollo</div>
         {rows.length === 0 ? (
-          <p className="px-5 pb-4 text-sm text-zinc-500">No hay pedidos en diseño, cerrados o cortando.</p>
+          <p className="px-5 pb-4 text-sm text-zinc-500">No hay pedidos en diseño, cerrados o cortando, ni trabajos libres con diseño.</p>
         ) : (
           <table className="w-full text-sm">
             <thead className="text-left text-xs text-zinc-500">
@@ -292,16 +307,28 @@ export function CombinedRoll({
         )}
       </Card>
 
+      <FreePieces
+        prints={lastBuilds}
+        labelOf={(p) => {
+          const o = orders.find((x) => x.id === p.garment.orderItemId.split("|")[0]);
+          return [o?.isJob ? o.name : o?.number, p.garment.name, p.garment.number].filter(Boolean).join(" ");
+        }}
+        onChange={(x) => { setExtra(x); setLayout(null); }}
+      />
+
       <Card className="flex flex-col gap-3">
         <div className="flex flex-wrap items-end gap-3">
           <h2 className="mr-auto text-sm font-medium text-zinc-900">Rollo · {chosen.length} {chosen.length === 1 ? "prenda elegida" : "prendas elegidas"}</h2>
+          <div className="w-32">
+            <FabricWidthInput mm={fabricMm} onChange={(v) => { setFabricMm(v); setLayout(null); }} />
+          </div>
           <div className="w-28">
             <Input label="Paños de (m)" type="number" step={0.5} value={panoM} onChange={(e) => { setPanoM(Number(e.target.value)); setLayout(null); }} />
           </div>
           <div className="w-48">
             <Select label="PDF" value={pdfLayout} onChange={(e) => setPdfLayout(e.target.value as "lado" | "paginas")}>
-              <option value="paginas">Una página por paño</option>
               <option value="lado">Paños uno al lado del otro</option>
+              <option value="paginas">Una página por paño</option>
             </Select>
           </div>
           {pdfLayout === "lado" && (

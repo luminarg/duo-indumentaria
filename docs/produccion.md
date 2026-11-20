@@ -166,3 +166,12 @@ pasar por una Server Action.
 - Plantillas en `public/mockups/remera/{frente,espalda}` (mockup gratuito de TroutGraph, uso comercial permitido; el autor pide crédito).
 - Para sumar otra plantilla (otro PSD de mockup con objetos inteligentes): `herramientas/mockups/build_template.py <psd> <salida> <spec.json>` (requiere `pip install psd-tools`). El script evalúa la deformación de Photoshop (quilt/envelope warp + perspectiva) y la guarda como malla; ver `spec_remera_frente.json` de ejemplo.
 - El short tiene plantilla disponible (mismo autor) y se suma cuando esté su moldería.
+
+
+## Novedades (noviembre 2026)
+
+- **Ancho de tela** editable junto a "Armar rollo" (se recuerda en el navegador). Los paños salen por defecto uno al lado del otro.
+- **Piezas sueltas**: archivo (PDF/PNG/JPG) con medida y copias (bandera, cuello, parche) o reposición de una pieza del pedido. Se suman al rollo al armarlo; no se guardan en el pedido.
+- **Rollo con varios pedidos** acepta trabajos libres (requiere la migración `032_rollo_combinado_trabajos.sql`).
+- **Bajar talles**: todos los del pedido o uno solo (aunque no esté en el pedido), con el diseño escalado y sin nombre ni número.
+- **DTF en papel** (`/panel/produccion/dtf`): diseños con medida y cantidad, papel en rollo (tramos) u hoja, margen y distancia mínima, giro opcional. Exporta PDF (escala horneada para Corel) y PNG RGBA a 300 dpi (con resolución grabada), un PNG por tramo u hoja (zip si son varios).

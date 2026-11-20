@@ -28,9 +28,12 @@ import { uploadOrderResource } from "../../pedidos/actions";
 import { pdfPrimitives } from "@/lib/produccion/pdfImport";
 import { detectDesignPieces } from "@/lib/produccion/designDetect";
 import { DEFAULT_SETTINGS, nest } from "@/lib/produccion/nesting";
+import { useFabricWidth } from "../useFabricWidth";
+import { FreePieces } from "../FreePieces";
+import { FabricWidthInput } from "../FabricWidthInput";
 import { sampleMolds } from "@/lib/produccion/sampleMolds";
 import { DEFAULT_ASSEMBLY } from "@/lib/produccion/assembly";
-import type { AnchoredElement, DesignConfig, PieceKind, RollLayout, TextAlign, TextRotation, WearerSide } from "@/lib/produccion/types";
+import type { AnchoredElement, DesignConfig, PieceKind, PrintPiece, RollLayout, TextAlign, TextRotation, WearerSide } from "@/lib/produccion/types";
 import { deleteDesignTemplate, listDesignTemplates, listProductionFonts, saveDesignTemplate, saveDesign, saveJob, saveJobLayout, saveLayout, signedProductionUrls } from "../actions";
 import { downloadProductionFiles, uploadFont, uploadToProduction } from "../upload";
 import { PiecePreview, type FontInfo } from "../Previews";
@@ -103,8 +106,13 @@ export function ProductionWorkbench(props: {
   const [panoM, setPanoM] = useState(5);
   const [rolloM, setRolloM] = useState(0);
   // Cómo sale el PDF: un paño por página, o todos uno al lado del otro (como en Corel).
-  const [pdfLayout, setPdfLayout] = useState<"lado" | "paginas">("paginas");
+  const [pdfLayout, setPdfLayout] = useState<"lado" | "paginas">("lado");
   const [gapCm, setGapCm] = useState(50);
+  const [fabricMm, setFabricMm] = useFabricWidth();
+  const rollSettings = useMemo(() => ({ ...DEFAULT_SETTINGS, rollWidthMm: fabricMm }), [fabricMm]);
+  const [sheetSize, setSheetSize] = useState("");
+  // Piezas sueltas (bandera, cuello, reposición) que se suman al rollo.
+  const [extra, setExtra] = useState<{ prints: PrintPiece[]; files: Record<string, Uint8Array> }>({ prints: [], files: {} });
 
   const selectContext = (reqId: string, compId: string, v: "jugador" | "arquero") => {
     const comps = componentsFor(reqId);
@@ -278,6 +286,9 @@ export function ProductionWorkbench(props: {
     [pieces, assembly, designConfig, garments, measure]
   );
 
+  // Talles que tiene la moldería (para bajar uno suelto, esté o no en el pedido).
+  const moldSizes = useMemo(() => [...new Set(pieces.map((p) => p.sizeLabel))].sort((a, b) => sizeSortKey(a) - sizeSortKey(b)), [pieces]);
+
   const countBySize = useMemo(() => {
     const m = new Map<string, number>();
     for (const g of garments) m.set(g.sizeLabel, (m.get(g.sizeLabel) ?? 0) + 1);
@@ -436,7 +447,7 @@ export function ProductionWorkbench(props: {
     run("Armando el rollo…", async () => {
       if (!build.prints.length) throw new Error("No hay piezas para armar: revisá talles y moldes.");
       if (!(panoM >= 1)) throw new Error("El largo del paño tiene que ser de al menos 1 m.");
-      const roll = nest(build.prints, { ...DEFAULT_SETTINGS, maxSegmentLengthMm: panoM * 1000 });
+      const roll = nest([...build.prints, ...extra.prints], { ...rollSettings, maxSegmentLengthMm: panoM * 1000 });
       setLayout(addCollarPanel(roll, config.collars, garments.length, designConfig.background.color));
     });
 
@@ -478,7 +489,7 @@ export function ProductionWorkbench(props: {
       if (!b) throw new Error("No se encontró una fuente del diseño. Elegila de nuevo o subila otra vez.");
       fonts[f] = b;
     }
-    return { background: bg, elements, fonts, backgrounds };
+    return { background: bg, elements, fonts, backgrounds: { ...backgrounds, ...extra.files } };
   }
 
   // Mockup plano (frente y espalda) de una prenda del pedido.
@@ -557,8 +568,12 @@ export function ProductionWorkbench(props: {
   // Diseño escalado sin acomodar en rollo: una página por talle con su juego de piezas.
   const onDownloadBySize = () =>
     run("Generando PDF por talle…", async () => {
-      if (!build.prints.length) throw new Error("No hay piezas: revisá talles y moldes.");
-      const sheets = sizeSheets(build.prints, DEFAULT_SETTINGS);
+      // Un talle suelto (aunque no esté en el pedido) o todos los del pedido.
+      const prints = sheetSize
+        ? buildPrintPieces({ pieces, assembly, design: designConfig, garments: [{ orderItemId: "talle", sizeLabel: sheetSize, name: null, number: null, variant }], measure }).prints
+        : build.prints;
+      if (!prints.length) throw new Error(sheetSize ? `No hay moldes del talle ${sheetSize}.` : "No hay piezas: revisá talles y moldes.");
+      const sheets = sizeSheets(prints, rollSettings);
       const out = await PDFDocument.create();
       out.setTitle("Diseño escalado por talle");
       for (const sh of sheets) {
@@ -566,7 +581,7 @@ export function ProductionWorkbench(props: {
         const pages = await out.copyPages(src, src.getPageIndices());
         pages.forEach((pg) => out.addPage(pg));
       }
-      saveBlob(new Blob([(await out.save()) as BlobPart], { type: "application/pdf" }), `talles-${orderId.slice(0, 8)}.pdf`);
+      saveBlob(new Blob([(await out.save()) as BlobPart], { type: "application/pdf" }), sheetSize ? `talle-${sheetSize}-${orderId.slice(0, 8)}.pdf` : `talles-${orderId.slice(0, 8)}.pdf`);
       setMessage(`PDF por talle: ${sheets.map((x) => x.size).join(", ")} (una página por talle, sin nombres ni números).`);
     });
 
@@ -789,9 +804,14 @@ export function ProductionWorkbench(props: {
             )}
           </Card>
 
+          <FreePieces prints={build.prints} onChange={(x) => { setExtra(x); setLayout(null); }} />
+
           <Card>
             <div className="mb-3 flex flex-wrap items-center gap-3">
               <h2 className="mr-auto text-sm font-medium text-zinc-900">Rollo</h2>
+              <div className="w-32">
+                <FabricWidthInput mm={fabricMm} onChange={(v) => { setFabricMm(v); setLayout(null); }} />
+              </div>
               <div className="w-28">
                 <Num label="Paños de (m)" step={0.5} value={panoM} onChange={(n) => { setPanoM(n); setLayout(null); }} hint={panoM > 5.5 ? "Más de 5,5 m no entra en un JPG de 300 dpi" : undefined} />
               </div>
@@ -812,7 +832,15 @@ export function ProductionWorkbench(props: {
               <Button variant="secondary" onClick={onSaveDesign} disabled={isPending}>Guardar diseño</Button>
               <Button variant="secondary" onClick={onNest} disabled={!!busy || !build.prints.length}>Armar rollo</Button>
               <Button variant="secondary" onClick={onDownload} disabled={!!busy || !layout}>Descargar rollo</Button>
-              <Button variant="secondary" onClick={onDownloadBySize} disabled={!!busy || !build.prints.length}>PDF por talle</Button>
+              <div className="w-36">
+                <Select label="PDF por talle" value={sheetSize} onChange={(e) => setSheetSize(e.target.value)}>
+                  <option value="">Todos los del pedido</option>
+                  {moldSizes.map((sz) => (
+                    <option key={sz} value={sz}>Solo {sz}</option>
+                  ))}
+                </Select>
+              </div>
+              <Button variant="secondary" onClick={onDownloadBySize} disabled={!!busy || (!sheetSize && !build.prints.length)}>Bajar talles</Button>
               <Button onClick={onSaveRoll} disabled={!!busy || !layout || modelId === SAMPLE}>Guardar rollo</Button>
             </div>
             {!job && allContexts.length > 1 && (
@@ -825,7 +853,7 @@ export function ProductionWorkbench(props: {
             {layout && (
               <div className="mt-3 flex flex-col gap-3">
                 <p className="text-sm text-zinc-700">
-                  <b>{(layout.lengthMm / 1000).toFixed(2)} m lineales</b> en {DEFAULT_SETTINGS.rollWidthMm} mm · {layout.placed.length} piezas ·{" "}
+                  <b>{(layout.lengthMm / 1000).toFixed(2)} m lineales</b> en {layout.settings.rollWidthMm} mm · {layout.placed.length} piezas ·{" "}
                   {layout.segments.length} {layout.segments.length === 1 ? "paño" : "paños"} de hasta {panoM} m ({pdfLayout === "lado" ? `en el PDF van uno al lado del otro, separados ${gapCm} cm` : "una página del PDF por paño"}; ninguna pieza queda partida)
                 </p>
                 <ul className="text-xs text-zinc-600">
