@@ -716,3 +716,36 @@ describe("rollo con varios pedidos", () => {
     expect((await PDFDocument.load(bytes)).getPageCount()).toBeGreaterThan(0);
   });
 });
+
+import { textToPiece } from "./exportPdf";
+describe("letra del indicador de talle", () => {
+  it("gira y alinea la letra sobre su punto", () => {
+    const t = { center: { x: 100, y: 50 }, heightMm: 10 };
+    // Horizontal centrada: el centro del texto cae en el punto.
+    const m0 = textToPiece({ ...t, rotation: 0, align: "centro" }, 30);
+    expect(apply(m0, { x: 15, y: 5 })).toEqual({ x: 100, y: 50 });
+    // Vertical (90°): se lee hacia abajo; empezando en el punto.
+    const m90 = textToPiece({ ...t, rotation: 90, align: "inicio" }, 30);
+    const a = apply(m90, { x: 0, y: 5 }), b = apply(m90, { x: 30, y: 5 });
+    expect(a.x).toBeCloseTo(100);
+    expect(a.y).toBeCloseTo(50);
+    expect(b.x).toBeCloseTo(100);
+    expect(b.y).toBeCloseTo(80);
+    // 270°: se lee hacia arriba.
+    const m270 = textToPiece({ ...t, rotation: 270, align: "centro" }, 30);
+    expect(apply(m270, { x: 30, y: 5 }).y).toBeCloseTo(35);
+  });
+
+  it("achica los talles largos al largo máximo y pasa giro y alineación", () => {
+    const design = defaultDesignConfig();
+    design.sizeIndicator = { ...design.sizeIndicator, enabled: true, pieceKind: "espalda", textHeightMm: 12, textMaxWidthMm: 14, textRotation: 90, textAlign: "inicio" };
+    const garments: GarmentRequest[] = [{ orderItemId: "a", sizeLabel: "XXL", name: "", number: "", variant: "jugador" }];
+    const molds = sampleMolds();
+    const { prints } = buildPrintPieces({ pieces: molds.filter((p) => p.sizeLabel === molds[0].sizeLabel).map((p) => ({ ...p, sizeLabel: "XXL" })), assembly: DEFAULT_ASSEMBLY, design, garments, measure: approxMeasurer });
+    const tag = prints.flatMap((p) => p.texts).find((t) => t.kind === "talle" && t.rotation === 90);
+    expect(tag).toBeTruthy();
+    expect(tag!.widthMm).toBeCloseTo(14);
+    expect(tag!.heightMm).toBeLessThan(12);
+    expect(tag!.align).toBe("inicio");
+  });
+});

@@ -266,7 +266,14 @@ export function buildPrintPieces({ pieces, assembly, design, garments, measure }
         else boxes.push({ center, widthMm: w, heightMm: h, strokeMm: 0.6, color: contrastOn(design.background.color) });
         const textCenter = { x: center.x - w / 2 + ind.textX * w, y: center.y - h / 2 + ind.textY * h };
         const style: TextStyle = { font: ind.font || DEFAULT_FONT, fill: ind.textColor || "#FFFFFF" };
-        texts.push({ kind: "talle", text: piece.sizeLabel, center: textCenter, heightMm: ind.textHeightMm, widthMm: measure(piece.sizeLabel, style.font, ind.textHeightMm), style });
+        // Si el talle es largo (2XL, 10) y hay un largo máximo, se achica la letra.
+        let th = ind.textHeightMm;
+        let tw = measure(piece.sizeLabel, style.font, th);
+        if (ind.textMaxWidthMm && ind.textMaxWidthMm > 0 && tw > ind.textMaxWidthMm) {
+          th *= ind.textMaxWidthMm / tw;
+          tw = ind.textMaxWidthMm;
+        }
+        texts.push({ kind: "talle", text: piece.sizeLabel, center: textCenter, heightMm: th, widthMm: tw, style, rotation: ind.textRotation ?? 0, align: ind.textAlign ?? "centro" });
         if (safeZoneOverflow(piece, center, w, h, design.safeMarginMm) > 1) {
           pieceWarnings.push({ pieceId: piece.id, message: `El indicador de talle queda a menos de ${design.safeMarginMm} mm del borde en talle ${piece.sizeLabel}` });
         }

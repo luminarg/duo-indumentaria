@@ -147,6 +147,12 @@ export type SizeIndicatorRule = {
   textX: number;
   textY: number;
   textHeightMm: number;
+  /** Giro de la letra (para indicadores verticales). */
+  textRotation?: TextRotation;
+  /** Alineación de la letra respecto de textX/textY, en el sentido de lectura. */
+  textAlign?: TextAlign;
+  /** Largo máximo de la letra (mm): si el talle es más largo (2XL), se achica. 0 = sin límite. */
+  textMaxWidthMm?: number;
   textColor: string;
   /** Fuente de la letra del talle (ruta de una fuente subida); vacío = Helvetica Bold. */
   font?: string;
@@ -278,9 +284,17 @@ export type PlacedText = {
   heightMm: number; // alto de mayúsculas
   widthMm: number;
   style: TextStyle;
-  /** 180 = texto dado vuelta (pieza dibujada al revés: el ruedo queda arriba). */
-  rotation?: 0 | 180;
+  /**
+   * Giro en grados, sentido horario como se ve la pieza. 180 = dado vuelta
+   * (pieza dibujada al revés); 90/270 = vertical (indicador de talle).
+   */
+  rotation?: TextRotation;
+  /** Qué punto del texto cae en `center`: su centro (por defecto), el inicio o el fin. */
+  align?: TextAlign;
 };
+
+export type TextRotation = 0 | 90 | 180 | 270;
+export type TextAlign = "centro" | "inicio" | "fin";
 
 /** Elemento anclado ya ubicado. */
 export type PlacedElement = {

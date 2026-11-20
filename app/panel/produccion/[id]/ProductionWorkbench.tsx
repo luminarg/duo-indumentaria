@@ -30,7 +30,7 @@ import { detectDesignPieces } from "@/lib/produccion/designDetect";
 import { DEFAULT_SETTINGS, nest } from "@/lib/produccion/nesting";
 import { sampleMolds } from "@/lib/produccion/sampleMolds";
 import { DEFAULT_ASSEMBLY } from "@/lib/produccion/assembly";
-import type { AnchoredElement, DesignConfig, PieceKind, RollLayout, WearerSide } from "@/lib/produccion/types";
+import type { AnchoredElement, DesignConfig, PieceKind, RollLayout, TextAlign, TextRotation, WearerSide } from "@/lib/produccion/types";
 import { deleteDesignTemplate, listDesignTemplates, listProductionFonts, saveDesignTemplate, saveDesign, saveJob, saveJobLayout, saveLayout, signedProductionUrls } from "../actions";
 import { downloadProductionFiles, uploadFont, uploadToProduction } from "../upload";
 import { PiecePreview, type FontInfo } from "../Previews";
@@ -1169,16 +1169,29 @@ function DesignForm({
               <Num label="Unidades desde el costado" step={0.1} value={config.sizeIndicator.fromSideUnits} onChange={(n) => update((c) => ({ ...c, sizeIndicator: { ...c.sizeIndicator, fromSideUnits: n } }))} />
               <Num label="Unidades desde la base" step={0.1} value={config.sizeIndicator.fromBaseUnits} onChange={(n) => update((c) => ({ ...c, sizeIndicator: { ...c.sizeIndicator, fromBaseUnits: n } }))} />
               <Num label="Ancho (mm)" value={config.sizeIndicator.widthMm} onChange={(n) => update((c) => ({ ...c, sizeIndicator: { ...c.sizeIndicator, widthMm: n } }))} />
+              <Num label="Letra: % desde la izquierda" step={1} value={Math.round(config.sizeIndicator.textX * 100)} onChange={(n) => update((c) => ({ ...c, sizeIndicator: { ...c.sizeIndicator, textX: n / 100 } }))} />
+              <Num label="Letra: % desde arriba" step={1} value={Math.round(config.sizeIndicator.textY * 100)} onChange={(n) => update((c) => ({ ...c, sizeIndicator: { ...c.sizeIndicator, textY: n / 100 } }))} />
               <Select
-                label="Letra del talle"
-                value={String(config.sizeIndicator.textY)}
-                onChange={(e) => update((c) => ({ ...c, sizeIndicator: { ...c.sizeIndicator, textY: Number(e.target.value) } }))}
+                label="Giro de la letra"
+                value={String(config.sizeIndicator.textRotation ?? 0)}
+                onChange={(e) => update((c) => ({ ...c, sizeIndicator: { ...c.sizeIndicator, textRotation: Number(e.target.value) as TextRotation } }))}
               >
-                <option value="0.15">Arriba</option>
-                <option value="0.5">Al centro</option>
-                <option value="0.85">Abajo</option>
+                <option value="0">Horizontal</option>
+                <option value="90">Vertical, se lee de arriba abajo</option>
+                <option value="270">Vertical, se lee de abajo arriba</option>
+                <option value="180">Dada vuelta</option>
+              </Select>
+              <Select
+                label="Alineación"
+                value={config.sizeIndicator.textAlign ?? "centro"}
+                onChange={(e) => update((c) => ({ ...c, sizeIndicator: { ...c.sizeIndicator, textAlign: e.target.value as TextAlign } }))}
+              >
+                <option value="centro">Centrada en el punto</option>
+                <option value="inicio">Empieza en el punto</option>
+                <option value="fin">Termina en el punto</option>
               </Select>
               <Num label="Alto de la letra (mm)" value={config.sizeIndicator.textHeightMm} onChange={(n) => update((c) => ({ ...c, sizeIndicator: { ...c.sizeIndicator, textHeightMm: n } }))} />
+              <Num label="Largo máx. de la letra (mm, 0 = libre)" value={config.sizeIndicator.textMaxWidthMm ?? 0} onChange={(n) => update((c) => ({ ...c, sizeIndicator: { ...c.sizeIndicator, textMaxWidthMm: n } }))} />
               {fontSelect("Fuente de la letra", config.sizeIndicator.font, (font) => update((c) => ({ ...c, sizeIndicator: { ...c.sizeIndicator, font } })))}
             </div>
           </div>

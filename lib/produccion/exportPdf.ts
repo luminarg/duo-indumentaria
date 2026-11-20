@@ -99,6 +99,15 @@ function pathOps(poly: Poly) {
   return [moveTo(poly[0].x, poly[0].y), ...poly.slice(1).map((p) => lineTo(p.x, p.y)), closePath()];
 }
 
+/** Matriz del texto (x der., y arriba, origen al inicio de la base) a la pieza (mm, Y abajo). */
+export function textToPiece(t: Pick<PlacedText, "center" | "heightMm" | "rotation" | "align">, widthMm: number): Affine {
+  const r = ((t.rotation ?? 0) * Math.PI) / 180;
+  const cos = Math.round(Math.cos(r) * 1e9) / 1e9, sin = Math.round(Math.sin(r) * 1e9) / 1e9;
+  const ax = t.align === "inicio" ? 0 : t.align === "fin" ? widthMm : widthMm / 2;
+  const h2 = t.heightMm / 2;
+  return { a: cos, b: sin, c: sin, d: -cos, e: t.center.x - cos * ax - sin * h2, f: t.center.y - sin * ax + cos * h2 };
+}
+
 function cm(m: Affine) {
   return concatTransformationMatrix(m.a, m.b, m.c, m.d, m.e, m.f);
 }
@@ -264,12 +273,9 @@ async function createPainter(doc: PDFDocument, background: BackgroundRule, asset
       const font = fonts[t.style.font] ?? helvetica;
       const size = t.heightMm / capHeightRatio(font);
       const w = font.widthOfTextAtSize(t.text, size);
-      const baseline = { x: t.center.x - w / 2, y: t.center.y + t.heightMm / 2 };
-      // Texto dado vuelta (180°) alrededor de su centro.
-      const local: Affine =
-        t.rotation === 180
-          ? { a: -1, b: 0, c: 0, d: 1, e: 2 * t.center.x - baseline.x, f: 2 * t.center.y - baseline.y }
-          : { a: 1, b: 0, c: 0, d: -1, e: baseline.x, f: baseline.y };
+      // Texto (x a la derecha, y arriba, origen al inicio de la línea de base)
+      // → pieza: girado `rotation` (horario) alrededor de su punto de anclaje.
+      const local = textToPiece(t, w);
       page.pushOperators(pushGraphicsState(), cm(compose(local, pieceToPage)));
       page.drawText(t.text, { x: 0, y: 0, size, font, color: t.style.fill ? hexToRgb(t.style.fill) : BLACK });
       page.pushOperators(popGraphicsState());
