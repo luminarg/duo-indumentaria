@@ -9,14 +9,21 @@ import { CombinedRoll, type CombinedOrder } from "./CombinedRoll";
 // guardado) en un mismo rollo, para aprovechar la tela.
 const STATUSES = ["diseno_molderia", "cerrado", "cortando"];
 
-export default async function RolloCombinadoPage() {
+export default async function RolloCombinadoPage({ searchParams }: { searchParams: Promise<{ pedido?: string }> }) {
+  const { pedido } = await searchParams;
   const supabase = await createClient();
-  const { data: orders } = await supabase
-    .from("orders")
-    .select("id, order_number, status, team_or_group_name, contact_name")
-    .in("status", STATUSES)
-    .order("estimated_delivery_date", { ascending: true, nullsFirst: false })
-    .limit(80);
+  // Pedidos en producción y, además, cualquier pedido no entregado con un
+  // diseño guardado (apenas se toca "Guardar diseño" ya se puede usar acá).
+  const { data: withDesign } = await supabase.from("order_designs").select("order_id").order("created_at", { ascending: false }).limit(300);
+  const designed = [...new Set([...(pedido ? [pedido] : []), ...(withDesign ?? []).map((d) => d.order_id as string)])].slice(0, 100);
+  const cols = "id, order_number, status, team_or_group_name, contact_name, estimated_delivery_date";
+  const [{ data: inProduction }, { data: withSaved }] = await Promise.all([
+    supabase.from("orders").select(cols).in("status", STATUSES).order("estimated_delivery_date", { ascending: true, nullsFirst: false }).limit(80),
+    designed.length ? supabase.from("orders").select(cols).in("id", designed).neq("status", "entregado") : { data: [] as never[] },
+  ]);
+  const orders = [...(inProduction ?? []), ...(withSaved ?? []).filter((o) => !(inProduction ?? []).some((x) => x.id === o.id))].sort((a, b) =>
+    String(a.estimated_delivery_date ?? "9999").localeCompare(String(b.estimated_delivery_date ?? "9999"))
+  );
   const ids = (orders ?? []).map((o) => o.id);
   // Trabajos libres (escalado para terceros) con diseño guardado.
   const { data: jobs } = await supabase
@@ -109,7 +116,8 @@ export default async function RolloCombinadoPage() {
         }
       />
       <CombinedRoll
-        orders={data}
+        preselectOrderId={pedido ?? null}
+        orders={pedido ? [...data.filter((o) => o.id === pedido), ...data.filter((o) => o.id !== pedido)] : data}
         sizeLabels={Object.fromEntries((sizes ?? []).map((s) => [s.id, s.label]))}
         models={models ?? []}
         components={components ?? []}

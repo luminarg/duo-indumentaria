@@ -34,10 +34,13 @@ export function FreePieces({
   const [error, setError] = useState<string | null>(null);
 
   const extra = useMemo(() => freePiecePrints(items, files, prints, usableWidthMm), [items, files, prints, usableWidthMm]);
+  // Avisa solo cuando cambian las piezas sueltas (no cuando cambian las del
+  // pedido: el rollo combinado las actualiza justo después de armar, y eso
+  // borraba el rollo recién armado).
   useEffect(() => {
     onChange({ prints: extra, files: Object.fromEntries(files.map((f) => [f.key, f.bytes])) });
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [extra, files]);
+  }, [items, files, usableWidthMm]);
 
   const options = useMemo(
     () =>

@@ -1,4 +1,4 @@
-import { bbox, intersectionArea, offset } from "./geometry";
+import { bbox, intersectionArea, offset, polygonsOverlap, simplify } from "./geometry";
 import { placementTransform } from "./nesting";
 import type { Affine, Poly, RollLayout } from "./types";
 
@@ -18,17 +18,67 @@ export function movePiece(layout: RollLayout, idx: number, dx: number, dy: numbe
   return reassignSegments({ ...layout, placed });
 }
 
-/** Gira la pieza 180° en su lugar (respeta el hilo de la tela). */
-export function rotatePiece(layout: RollLayout, idx: number): RollLayout {
+/**
+ * Gira la pieza en su lugar, alrededor de su centro: 180° (respeta el hilo de
+ * la tela) o 90° (solo tiene sentido en mangas).
+ */
+export function rotatePiece(layout: RollLayout, idx: number, by: 90 | 180 = 180): RollLayout {
   const p = layout.placed[idx];
   const outline = p.print.piece.outline;
   const oldT = placementTransform(outline, p.rotation, p.dx, p.dy);
   const local = p.outer.map((q) => apply(invert(oldT), q));
-  const rotation: 0 | 180 = p.rotation === 180 ? 0 : 180;
+  const rotation = ((p.rotation + by) % 360) as typeof p.rotation;
   const newT = placementTransform(outline, rotation, p.dx, p.dy);
   const outer = local.map((q) => apply(newT, q));
   const placed = layout.placed.map((q, i) => (i === idx ? { ...q, rotation, outer } : q));
   return reassignSegments({ ...layout, placed });
+}
+
+/**
+ * Después de soltar una pieza: si quedó pisando o a menos de la separación de
+ * otra (o fuera del ancho), la corre lo mínimo hasta que cumpla, probando en
+ * círculos cada vez más grandes (hasta `maxMm`). Si no encuentra lugar, la
+ * deja donde está (queda en rojo).
+ */
+export function settlePiece(layout: RollLayout, idx: number, maxMm = 80): RollLayout {
+  if (!validateLayout(layout, [idx]).length) return layout;
+  const s = layout.settings;
+  const half = s.gapMm / 2 - 0.05;
+  const grownOf = (poly: Poly) => {
+    const g = offset(poly, half);
+    return g ? simplify(g, 0.2) : null;
+  };
+  const me = grownOf(layout.placed[idx].outer);
+  if (!me) return layout;
+  const meBox = bbox(me);
+  const rawBox = bbox(layout.placed[idx].outer);
+  const others = layout.placed
+    .map((p, j) => (j === idx ? null : grownOf(p.outer)))
+    .map((g) => (g ? { g, b: bbox(g) } : null));
+  const collarRanges = layout.segments.filter((g) => g.collars).map((g) => [g.collars!.startMm - s.gapMm, g.collars!.endMm] as const);
+  const ok = (dx: number, dy: number) => {
+    if (rawBox.minX + dx < s.edgeMarginMm || rawBox.maxX + dx > s.rollWidthMm - s.edgeMarginMm || rawBox.minY + dy < 0) return false;
+    if (collarRanges.some(([a, b]) => rawBox.maxY + dy > a && rawBox.minY + dy < b)) return false;
+    const box = { minX: meBox.minX + dx, maxX: meBox.maxX + dx, minY: meBox.minY + dy, maxY: meBox.maxY + dy };
+    const moved = me.map((q) => ({ x: q.x + dx, y: q.y + dy }));
+    for (const o of others) if (o && polygonsOverlap(moved, o.g, box, o.b)) return false;
+    return true;
+  };
+  for (let r = 1; r <= maxMm; r += r < 10 ? 1 : 2) {
+    const n = Math.max(8, Math.round((2 * Math.PI * r) / 2));
+    let best: [number, number] | null = null;
+    for (let k = 0; k < n; k++) {
+      const a = (2 * Math.PI * k) / n;
+      const dx = Math.round(r * Math.cos(a) * 2) / 2, dy = Math.round(r * Math.sin(a) * 2) / 2;
+      if (ok(dx, dy)) { best = [dx, dy]; break; }
+    }
+    if (best) {
+      const moved = movePiece(layout, idx, best[0], best[1]);
+      // Por si quedó partida entre paños: el validador completo decide.
+      return validateLayout(moved, [idx]).length ? layout : moved;
+    }
+  }
+  return layout;
 }
 
 /** Vuelve a repartir las piezas en los paños según dónde quedaron. */
@@ -37,7 +87,9 @@ export function reassignSegments(layout: RollLayout): RollLayout {
   layout.placed.forEach((p, i) => {
     const b = bbox(p.outer);
     const cy = (b.minY + b.maxY) / 2;
-    const seg = segments.find((s) => !s.collars && cy >= s.startMm && cy < s.endMm) ?? segments.find((s) => !s.collars && b.minY < s.endMm) ?? segments[0];
+    // El tramo puede terminar con el panel de cuellos: las piezas van antes.
+    const end = (s: (typeof segments)[number]) => (s.collars ? s.collars.startMm : s.endMm);
+    const seg = segments.find((s) => cy >= s.startMm && cy < end(s)) ?? segments.find((s) => b.minY < end(s)) ?? segments[0];
     seg.pieceIndexes.push(i);
   });
   return { ...layout, segments };

@@ -77,6 +77,44 @@ export function cornerPlacement(outline: PatternPiece["outline"], w: number, h: 
   return null;
 }
 
+/**
+ * Esquina alta de la cintura de una pierna de short (el tiro trasero): el
+ * punto más alto, la dirección de la cintura hacia el otro costado, la
+ * perpendicular hacia adentro de la pieza y el ángulo de esa línea.
+ */
+export function waistCorner(piece: PatternPiece) {
+  const b = bbox(piece.outline);
+  const top = piece.outline.reduce((t, q) => (q.y < t.y ? q : t));
+  const toRight = top.x < (b.minX + b.maxX) / 2;
+  // La cintura: el borde de arriba, del lado opuesto a la esquina, a ~40% del ancho.
+  const xs = toRight ? top.x + 0.4 * (b.maxX - b.minX) : top.x - 0.4 * (b.maxX - b.minX);
+  const sp = topAtX(piece.outline, xs);
+  const far = { x: xs, y: sp ?? top.y };
+  const len = Math.hypot(far.x - top.x, far.y - top.y) || 1;
+  const dir = { x: (far.x - top.x) / len, y: (far.y - top.y) / len };
+  // Perpendicular que apunta hacia abajo (adentro de la pieza).
+  let down = { x: -dir.y, y: dir.x };
+  if (down.y < 0) down = { x: -down.x, y: -down.y };
+  // Ángulo para que el arte se lea de izquierda a derecha sobre la cintura.
+  let angle = (Math.atan2(dir.y, dir.x) * 180) / Math.PI;
+  if (angle > 90) angle -= 180;
+  if (angle < -90) angle += 180;
+  return { top, dir, down, angle };
+}
+
+/** Y del borde de arriba de un polígono en una X dada. */
+function topAtX(poly: PatternPiece["outline"], x: number): number | null {
+  let best: number | null = null;
+  for (let i = 0, j = poly.length - 1; i < poly.length; j = i++) {
+    const a = poly[j], c = poly[i];
+    if ((a.x <= x && x < c.x) || (c.x <= x && x < a.x)) {
+      const y = a.y + ((x - a.x) * (c.y - a.y)) / (c.x - a.x);
+      if (best === null || y < best) best = y;
+    }
+  }
+  return best;
+}
+
 /** Blanco sobre fondos oscuros, casi negro sobre claros. */
 export function contrastOn(bg?: string | null): string {
   if (!bg || !/^#?[0-9a-f]{6}$/i.test(bg.replace("#", "").padStart(6, "0"))) return "#141414";
@@ -267,14 +305,31 @@ export function buildPrintPieces({ pieces, assembly, design, garments, measure }
 
       // Indicador de talle tipo escudo (opcional): arte + letra del talle.
       const ind = design.sizeIndicator;
-      if (ind?.enabled && ind.pieceKind === piece.kind) {
+      const indOnLeg = !!ind?.enabled && !!ind.shortKind && ind.shortKind === piece.kind;
+      if (ind?.enabled && (ind.pieceKind === piece.kind || indOnLeg)) {
         const u = gridUnit(piece);
         const w = ind.widthMm;
         const h = w * (ind.artAspect || 1);
-        const center = { x: xFromWearerSide(piece, ind.side, ind.fromSideUnits), y: baselineY(piece) - ind.fromBaseUnits * u };
-        if (ind.artPath) elements.push({ elementId: "indicador-talle", label: "Indicador de talle", center, widthMm: w, heightMm: h, filePath: ind.artPath });
+        let center = { x: xFromWearerSide(piece, ind.side, ind.fromSideUnits), y: baselineY(piece) - ind.fromBaseUnits * u };
+        let angle = 0;
+        if (indOnLeg) {
+          // Short: en la esquina alta de la cintura (tiro trasero), siguiendo
+          // la línea de la cintura hacia el otro costado.
+          const c0 = waistCorner(piece);
+          angle = c0.angle;
+          const along = (ind.shortAlongWaistUnits ?? 1) * u, below = (ind.shortBelowWaistUnits ?? 0.35) * u;
+          center = { x: c0.top.x + c0.dir.x * along + c0.down.x * below, y: c0.top.y + c0.dir.y * along + c0.down.y * below };
+        }
+        // Todo lo del indicador gira junto alrededor de su centro.
+        const rot = (p: { x: number; y: number }) => {
+          if (!angle) return p;
+          const r = (angle * Math.PI) / 180, cos = Math.cos(r), sin = Math.sin(r);
+          const dx = p.x - center.x, dy = p.y - center.y;
+          return { x: center.x + cos * dx - sin * dy, y: center.y + sin * dx + cos * dy };
+        };
+        if (ind.artPath) elements.push({ elementId: "indicador-talle", label: "Indicador de talle", center, widthMm: w, heightMm: h, filePath: ind.artPath, rotation: angle || undefined });
         else boxes.push({ center, widthMm: w, heightMm: h, strokeMm: 0.6, color: contrastOn(design.background.color) });
-        const textCenter = { x: center.x - w / 2 + ind.textX * w, y: center.y - h / 2 + ind.textY * h };
+        const textCenter = rot({ x: center.x - w / 2 + ind.textX * w, y: center.y - h / 2 + ind.textY * h });
         const style: TextStyle = { font: ind.font || DEFAULT_FONT, fill: ind.textColor || "#FFFFFF" };
         // Si el talle es largo (2XL, 10) y hay un largo máximo, se achica la letra.
         let th = ind.textHeightMm;
@@ -283,7 +338,7 @@ export function buildPrintPieces({ pieces, assembly, design, garments, measure }
           th *= ind.textMaxWidthMm / tw;
           tw = ind.textMaxWidthMm;
         }
-        texts.push({ kind: "talle", text: piece.sizeLabel, center: textCenter, heightMm: th, widthMm: tw, style, rotation: ind.textRotation ?? 0, align: ind.textAlign ?? "centro" });
+        texts.push({ kind: "talle", text: piece.sizeLabel, center: textCenter, heightMm: th, widthMm: tw, style, rotation: (ind.textRotation ?? 0) + angle, align: ind.textAlign ?? "centro" });
         if (safeZoneOverflow(piece, center, w, h, design.safeMarginMm) > 1) {
           pieceWarnings.push({ pieceId: piece.id, message: `El indicador de talle queda a menos de ${design.safeMarginMm} mm del borde en talle ${piece.sizeLabel}` });
         }

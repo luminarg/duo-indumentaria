@@ -244,6 +244,12 @@ export class ArtBaker {
 
     const parts: string[] = [];
     const stack: M[] = [];
+    // Estado del texto (fuente, interlineado…): es parte del estado gráfico y
+    // dura entre bloques BT…ET. Como cada bloque se envuelve en q…Q (para
+    // ponerle la matriz), se repite el estado vigente al empezar cada uno.
+    const TEXT_STATE = new Set(["Tf", "Tc", "Tw", "Tz", "TL", "Tr", "Ts"]);
+    let textState: Record<string, string> = {};
+    const textStack: Record<string, string>[] = [];
     let ctm = init;
     let subs: { text: string; box: Box }[] = [];
     let sub = "";
@@ -287,6 +293,7 @@ export class ArtBaker {
       for (const o of ops) if (NUM.test(o)) n.push(Number(o));
       const raw = (ops.length ? ops.join(" ") + " " : "") + t;
 
+      if (TEXT_STATE.has(t)) textState = { ...textState, [t]: raw };
       if (textBuf) {
         textBuf.push(raw);
         if (t === "ET") {
@@ -297,14 +304,16 @@ export class ArtBaker {
       }
       switch (t) {
         case "BT":
-          textBuf = [raw];
+          textBuf = [raw, ...Object.values(textState)];
           continue;
         case "q":
           stack.push(ctm);
+          textStack.push(textState);
           parts.push("q\n");
           continue;
         case "Q":
           ctm = stack.pop() ?? init;
+          textState = textStack.pop() ?? textState;
           parts.push("Q\n");
           continue;
         case "cm":

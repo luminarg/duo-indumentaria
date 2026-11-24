@@ -78,6 +78,14 @@ export function rotate180About(c: Pt): Affine {
   return { a: -1, b: 0, c: 0, d: -1, e: 2 * c.x, f: 2 * c.y };
 }
 
+/** Giro de 0/90/180/270° (90 = de X hacia Y, horario con Y hacia abajo) alrededor de un punto. */
+export function rotateQuarterAbout(c: Pt, deg: 0 | 90 | 180 | 270): Affine {
+  if (deg === 0) return IDENTITY;
+  if (deg === 180) return rotate180About(c);
+  if (deg === 90) return { a: 0, b: 1, c: -1, d: 0, e: c.x + c.y, f: c.y - c.x };
+  return { a: 0, b: -1, c: 1, d: 0, e: c.x - c.y, f: c.y + c.x };
+}
+
 /** Punto más alto (Y mínima). Si hay empate, el más cercano al centro horizontal. */
 export function highestPoint(poly: Poly): Pt {
   const b = bbox(poly);
@@ -196,4 +204,58 @@ export function minDistance(p: Poly, q: Poly): number {
     }
   }
   return best;
+}
+
+/** Douglas-Peucker: saca vértices que se apartan menos de `tol` mm de la línea. */
+export function simplify(poly: Poly, tol: number): Poly {
+  if (poly.length < 8) return poly;
+  const keep = new Uint8Array(poly.length);
+  const stack: [number, number][] = [[0, poly.length - 1]];
+  keep[0] = keep[poly.length - 1] = 1;
+  while (stack.length) {
+    const [i0, i1] = stack.pop()!;
+    const a = poly[i0], b = poly[i1];
+    const dx = b.x - a.x, dy = b.y - a.y;
+    const len = Math.hypot(dx, dy) || 1e-9;
+    let far = -1, dist = tol;
+    for (let i = i0 + 1; i < i1; i++) {
+      const d = Math.abs((poly[i].x - a.x) * dy - (poly[i].y - a.y) * dx) / len;
+      if (d > dist) { dist = d; far = i; }
+    }
+    if (far >= 0) { keep[far] = 1; stack.push([i0, far], [far, i1]); }
+  }
+  const out = poly.filter((_, i) => keep[i]);
+  return out.length >= 3 ? out : poly;
+}
+
+/**
+ * ¿Se pisan dos polígonos simples? (más rápido que calcular el área de la
+ * intersección: alcanza con que se crucen dos lados o uno esté dentro del otro).
+ */
+export function polygonsOverlap(p: Poly, q: Poly, pb: BBox = bbox(p), qb: BBox = bbox(q)): boolean {
+  if (pb.maxX <= qb.minX || qb.maxX <= pb.minX || pb.maxY <= qb.minY || qb.maxY <= pb.minY) return false;
+  const n = p.length, m = q.length;
+  for (let i = 0, ip = n - 1; i < n; ip = i++) {
+    const a = p[ip], b = p[i];
+    const ex0 = Math.min(a.x, b.x), ex1 = Math.max(a.x, b.x), ey0 = Math.min(a.y, b.y), ey1 = Math.max(a.y, b.y);
+    if (ex1 < qb.minX || ex0 > qb.maxX || ey1 < qb.minY || ey0 > qb.maxY) continue;
+    const dx = b.x - a.x, dy = b.y - a.y;
+    for (let j = 0, jp = m - 1; j < m; jp = j++) {
+      const c = q[jp], d = q[j];
+      if (Math.max(c.x, d.x) < ex0 || Math.min(c.x, d.x) > ex1 || Math.max(c.y, d.y) < ey0 || Math.min(c.y, d.y) > ey1) continue;
+      const fx = d.x - c.x, fy = d.y - c.y;
+      const den = dx * fy - dy * fx;
+      if (den === 0) continue;
+      const t = ((c.x - a.x) * fy - (c.y - a.y) * fx) / den;
+      const u = ((c.x - a.x) * dy - (c.y - a.y) * dx) / den;
+      if (t > 1e-9 && t < 1 - 1e-9 && u > 1e-9 && u < 1 - 1e-9) return true;
+    }
+  }
+  // Sin cruces: uno adentro del otro, o bordes que coinciden (piezas iguales
+  // en el mismo lugar). Se prueban todos los vértices y, si las cajas son
+  // casi iguales, se calcula el área en común.
+  for (const v of p) if (pointInPolygon(v, q)) return true;
+  for (const v of q) if (pointInPolygon(v, p)) return true;
+  if (Math.abs(pb.minX - qb.minX) < 1 && Math.abs(pb.maxX - qb.maxX) < 1 && Math.abs(pb.minY - qb.minY) < 1 && Math.abs(pb.maxY - qb.maxY) < 1) return intersectionArea(p, q) > 0.01;
+  return false;
 }

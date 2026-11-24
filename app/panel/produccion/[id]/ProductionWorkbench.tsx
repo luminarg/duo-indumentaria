@@ -34,6 +34,8 @@ import { FabricWidthInput } from "../FabricWidthInput";
 import { sampleMolds } from "@/lib/produccion/sampleMolds";
 import { DEFAULT_ASSEMBLY } from "@/lib/produccion/assembly";
 import type { AnchoredElement, DesignConfig, PieceKind, PrintPiece, RollLayout, TextAlign, TextRotation, WearerSide } from "@/lib/produccion/types";
+import Link from "next/link";
+import { cn } from "@/lib/cn";
 import { isLeg } from "@/lib/produccion/types";
 import { deleteDesignTemplate, listDesignTemplates, listProductionFonts, saveDesignTemplate, saveDesign, saveJob, saveJobLayout, saveLayout, signedProductionUrls } from "../actions";
 import { downloadProductionFiles, uploadFont, uploadToProduction } from "../upload";
@@ -438,7 +440,7 @@ export function ProductionWorkbench(props: {
           variant,
           config,
         });
-        setMessage(`Diseño guardado (versión ${version}).`);
+        setMessage(`Diseño guardado (versión ${version}). Ya se puede usar en el rollo con varios pedidos.`);
       } catch (e) {
         setError(e instanceof Error ? e.message : String(e));
       }
@@ -497,8 +499,15 @@ export function ProductionWorkbench(props: {
   const [mockGarment, setMockGarment] = useState<string>("");
   const [mockup, setMockup] = useState<{ png: Blob; url: string; pdf: Uint8Array | null; name: string } | null>(null);
   const [mockStyle, setMockStyle] = useState<"duo" | "foto" | "plano">("duo");
-  const [trimOn, setTrimOn] = useState(false);
-  const [trimColor, setTrimColor] = useState("#C9A646");
+  // Cuello y puños, cada uno por separado: como viene del diseño u otro color.
+  const [neckTrim, setNeckTrim] = useState<{ mode: "diseno" | "color"; color: string }>({ mode: "diseno", color: "#C9A646" });
+  const [cuffTrim, setCuffTrim] = useState<{ mode: "diseno" | "color"; color: string }>({ mode: "diseno", color: "#C9A646" });
+  // Colores que trae el diseño, para elegirlos con un toque.
+  const designColors = useMemo(() => {
+    const bg = designConfig.background;
+    const list = [bg.color, bg.sleeveColor, config.collars.color, ...(bg.template?.colors ?? [])].filter((c): c is string => !!c && /^#[0-9a-f]{6}$/i.test(c));
+    return [...new Set(list.map((c) => c.toUpperCase()))];
+  }, [designConfig.background, config.collars.color]);
   const onMockup = () =>
     run("Armando el mockup…", async () => {
       const g = garments.find((x) => x.orderItemId === mockGarment) ?? garments[0];
@@ -528,7 +537,13 @@ export function ProductionWorkbench(props: {
             bgColor: p.bgColor ?? designConfig.background.color ?? "#FFFFFF",
           };
         });
-        const opts = { trimColor: trimOn ? trimColor : null, cuffColor: trimOn ? trimColor : null };
+        // Cuello "del diseño": el color de los cuellos del rollo (o el fondo).
+        // Puños "del diseño": sin pintar, sigue el arte de la manga.
+        const neckFromDesign = config.collars.color || designConfig.background.color || null;
+        const opts = {
+          trimColor: neckTrim.mode === "color" ? neckTrim.color : neckFromDesign,
+          cuffColor: cuffTrim.mode === "color" ? cuffTrim.color : null,
+        };
         // Remera Duo (foto de la marca) o la de TroutGraph.
         const base = mockStyle === "duo" ? "/mockups/remera_duo" : "/mockups/remera";
         const front = await renderPhotoView(`${base}/frente`, rasters, opts);
@@ -771,11 +786,10 @@ export function ProductionWorkbench(props: {
                 </Select>
               </div>
               {mockStyle !== "plano" && (
-                <label className="flex items-center gap-2 pb-2 text-sm text-zinc-700">
-                  <input type="checkbox" checked={trimOn} onChange={(e) => setTrimOn(e.target.checked)} />
-                  Cuello y puños de color
-                  {trimOn && <input type="color" value={trimColor} onChange={(e) => setTrimColor(e.target.value.toUpperCase())} className="h-7 w-10 rounded border border-zinc-300" />}
-                </label>
+                <>
+                  <TrimPicker label="Cuello" fromDesign="Como el diseño" value={neckTrim} onChange={setNeckTrim} swatches={designColors} />
+                  <TrimPicker label="Puños" fromDesign="Como la manga" value={cuffTrim} onChange={setCuffTrim} swatches={designColors} />
+                </>
               )}
               <Button variant="secondary" onClick={onMockup} disabled={!!busy || !garments.length || modelId === SAMPLE}>
                 Generar mockup
@@ -809,6 +823,14 @@ export function ProductionWorkbench(props: {
           <FreePieces prints={build.prints} usableWidthMm={fabricMm - 2 * DEFAULT_SETTINGS.edgeMarginMm} onChange={(x) => { setExtra(x); setLayout(null); }} />
 
           <Card>
+            {!job && allContexts.length > 1 && (
+              <div className="mb-3 flex flex-wrap items-center gap-2 rounded-lg bg-sky-50 px-3 py-2 text-xs text-sky-900">
+                Este pedido tiene {allContexts.length} artículos/prendas. Para armar un solo rollo con todos (cada uno con su diseño guardado):
+                <Link href={`/panel/produccion/rollo-combinado?pedido=${orderId}`} className="font-semibold underline">
+                  Rollo con todos los artículos
+                </Link>
+              </div>
+            )}
             <div className="hint-float mb-3 flex flex-wrap items-end gap-x-3 gap-y-6 pb-4">
               <h2 className="mr-auto self-center text-sm font-medium text-zinc-900">Rollo</h2>
               <div className="w-32">
@@ -917,6 +939,37 @@ export function ProductionWorkbench(props: {
           )}
         </div>
       </div>
+    </div>
+  );
+}
+
+type Trim = { mode: "diseno" | "color"; color: string };
+
+/** Cuello o puños del mockup: como viene del diseño, u otro color (con los colores del diseño a mano). */
+function TrimPicker({ label, fromDesign, value, onChange, swatches }: { label: string; fromDesign: string; value: Trim; onChange: (t: Trim) => void; swatches: string[] }) {
+  return (
+    <div className="flex items-end gap-2">
+      <div className="w-40">
+        <Select label={label} value={value.mode} onChange={(e) => onChange({ ...value, mode: e.target.value as Trim["mode"] })}>
+          <option value="diseno">{fromDesign}</option>
+          <option value="color">Otro color</option>
+        </Select>
+      </div>
+      {value.mode === "color" && (
+        <div className="flex items-center gap-1 pb-1.5">
+          <input type="color" value={value.color} onChange={(e) => onChange({ ...value, color: e.target.value.toUpperCase() })} className="h-7 w-10 rounded border border-zinc-300" title="Elegir color" />
+          {swatches.map((c) => (
+            <button
+              key={c}
+              type="button"
+              title={`Color del diseño ${c}`}
+              onClick={() => onChange({ mode: "color", color: c })}
+              className={cn("h-6 w-6 rounded border", value.color === c ? "border-zinc-900 ring-2 ring-zinc-900/20" : "border-zinc-300")}
+              style={{ backgroundColor: c }}
+            />
+          ))}
+        </div>
+      )}
     </div>
   );
 }
@@ -1211,7 +1264,7 @@ function DesignForm({
       <Card className="flex flex-col gap-3">
         <label className="flex items-center gap-2 text-sm font-medium text-zinc-900">
           <input type="checkbox" checked={config.sizeIndicator.enabled} onChange={(e) => update((c) => ({ ...c, sizeIndicator: { ...c.sizeIndicator, enabled: e.target.checked } }))} />
-          Indicador de talle en el frente (opcional)
+          Indicador de talle (opcional)
         </label>
         {config.sizeIndicator.enabled && (
           <div className="flex flex-col gap-2">
@@ -1219,6 +1272,27 @@ function DesignForm({
               PDF del indicador, sin la letra del talle {config.sizeIndicator.artPath ? "(cargado)" : ""}
               <input type="file" accept="application/pdf" className="mt-1 block w-full text-sm" onChange={(e) => e.target.files?.[0] && onIndicatorFile(e.target.files[0])} />
             </label>
+            {hasLegs && (
+              <div className="grid grid-cols-2 gap-2 rounded-lg bg-zinc-50 p-2">
+                <Select
+                  label="En el short"
+                  value={config.sizeIndicator.shortKind ?? ""}
+                  onChange={(e) => update((c) => ({ ...c, sizeIndicator: { ...c.sizeIndicator, shortKind: (e.target.value || null) as "pierna_izq" | "pierna_der" | null } }))}
+                >
+                  <option value="">No va en el short</option>
+                  <option value="pierna_izq">Pierna izquierda</option>
+                  <option value="pierna_der">Pierna derecha</option>
+                </Select>
+                <div />
+                {config.sizeIndicator.shortKind && (
+                  <>
+                    <Num label="Unidades desde la esquina, por la cintura" step={0.1} value={config.sizeIndicator.shortAlongWaistUnits ?? 1} onChange={(n) => update((c) => ({ ...c, sizeIndicator: { ...c.sizeIndicator, shortAlongWaistUnits: n } }))} hint="Esquina alta (tiro trasero); gira con la cintura" />
+                    <Num label="Unidades debajo de la cintura" step={0.05} value={config.sizeIndicator.shortBelowWaistUnits ?? 0.35} onChange={(n) => update((c) => ({ ...c, sizeIndicator: { ...c.sizeIndicator, shortBelowWaistUnits: n } }))} />
+                  </>
+                )}
+              </div>
+            )}
+            <p className="text-xs font-medium text-zinc-500">En la remera (frente):</p>
             <Select label="Lado" value={config.sizeIndicator.side} onChange={(e) => update((c) => ({ ...c, sizeIndicator: { ...c.sizeIndicator, side: e.target.value as WearerSide } }))}>
               {SIDE_OPTIONS.map((o) => (
                 <option key={o.value} value={o.value}>{o.label}</option>

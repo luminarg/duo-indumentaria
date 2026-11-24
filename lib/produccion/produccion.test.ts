@@ -415,8 +415,11 @@ describe("panel de cuellos", () => {
     const withCollars = addCollarPanel(roll, design.collars, 30, "#112233");
     const panel = withCollars.segments.at(-1)!.collars!;
     expect(panel.strips).toBe(10);
-    expect(panel.startMm).toBeCloseTo(roll.lengthMm + DEFAULT_SETTINGS.gapMm);
-    expect(withCollars.lengthMm).toBeCloseTo(roll.lengthMm + DEFAULT_SETTINGS.gapMm + 400);
+    // A 6 mm del contorno de la última pieza, en el mismo paño.
+    const lowest = Math.max(...roll.placed.flatMap((p) => p.outer.map((q) => q.y)));
+    expect(panel.startMm).toBeCloseTo(lowest + DEFAULT_SETTINGS.gapMm);
+    expect(withCollars.lengthMm).toBeCloseTo(lowest + DEFAULT_SETTINGS.gapMm + 400);
+    expect(withCollars.segments.length).toBe(roll.segments.length);
     expect(panel.color).toBe("#112233");
     expect(panel.separatorColor).toBe(contrastOn("#112233"));
 
@@ -429,7 +432,8 @@ describe("panel de cuellos", () => {
     const { bytes } = await exportRollPdf(withCollars, design.background);
     const out = await PDFDocument.load(bytes);
     const last = out.getPage(out.getPageCount() - 1);
-    expect(last.getHeight() / (72 / 25.4)).toBeCloseTo(400, 0);
+    const seg = withCollars.segments.at(-1)!;
+    expect(last.getHeight() / (72 / 25.4)).toBeCloseTo(seg.endMm - seg.startMm, 0);
   });
 });
 

@@ -108,6 +108,12 @@ export function textToPiece(t: Pick<PlacedText, "center" | "heightMm" | "rotatio
   return { a: cos, b: sin, c: sin, d: -cos, e: t.center.x - cos * ax - sin * h2, f: t.center.y - sin * ax + cos * h2 };
 }
 
+/** Giro de `deg` grados (horario con Y hacia abajo) alrededor de un punto. */
+function rotateAbout(c: { x: number; y: number }, deg: number): Affine {
+  const r = (deg * Math.PI) / 180, cos = Math.cos(r), sin = Math.sin(r);
+  return { a: cos, b: sin, c: -sin, d: cos, e: c.x - cos * c.x + sin * c.y, f: c.y - sin * c.x - cos * c.y };
+}
+
 function cm(m: Affine) {
   return concatTransformationMatrix(m.a, m.b, m.c, m.d, m.e, m.f);
 }
@@ -239,10 +245,11 @@ async function createPainter(doc: PDFDocument, background: BackgroundRule, asset
       const art = el.filePath ? elementPages[el.filePath] : undefined;
       if (!art) continue;
       const s = el.widthMm / (art.width / MM);
-      const m = compose(
+      let m = compose(
         compose(embeddedToCanvas(art), { a: s, b: 0, c: 0, d: s, e: 0, f: 0 }),
         translate(el.center.x - el.widthMm / 2, el.center.y - el.heightMm / 2)
       );
+      if (el.rotation) m = compose(m, rotateAbout(el.center, el.rotation));
       page.pushOperators(pushGraphicsState(), ...artOps(page, art, m, pieceToPage), popGraphicsState());
     }
     page.pushOperators(popGraphicsState());

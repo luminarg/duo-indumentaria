@@ -54,6 +54,7 @@ type Row = {
 };
 
 export function CombinedRoll({
+  preselectOrderId,
   orders,
   sizeLabels,
   models,
@@ -61,6 +62,8 @@ export function CombinedRoll({
   pieces,
   assembly,
 }: {
+  /** Viene del taller de un pedido: arranca con todos sus artículos con diseño elegidos. */
+  preselectOrderId?: string | null;
   orders: CombinedOrder[];
   sizeLabels: Record<string, string>;
   models: Model[];
@@ -83,7 +86,9 @@ export function CombinedRoll({
     [orders, components]
   );
 
-  const [selected, setSelected] = useState<Set<string>>(new Set());
+  const [selected, setSelected] = useState<Set<string>>(
+    () => new Set(preselectOrderId ? rows.filter((r) => r.order.id === preselectOrderId && r.design && !r.done).map((r) => r.id) : [])
+  );
   const [panoM, setPanoM] = useState(5);
   const [pdfLayout, setPdfLayout] = useState<"paginas" | "lado">("lado");
   const [gapCm, setGapCm] = useState(50);

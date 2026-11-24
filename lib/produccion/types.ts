@@ -181,6 +181,16 @@ export type SizeIndicatorRule = {
   textColor: string;
   /** Fuente de la letra del talle (ruta de una fuente subida); vacío = Helvetica Bold. */
   font?: string;
+  /**
+   * Short: también (o solo, si el molde es de short) en una pierna. Va en la
+   * esquina alta de la cintura (el tiro trasero), girado siguiendo la línea de
+   * la cintura, con el mismo arte y la misma letra.
+   */
+  shortKind?: "pierna_izq" | "pierna_der" | null;
+  /** Desde la esquina alta de la cintura (tiro trasero), a lo largo de la cintura. */
+  shortAlongWaistUnits?: number;
+  /** Desde la línea de la cintura hacia abajo. */
+  shortBelowWaistUnits?: number;
 };
 
 /** Dónde está una pieza dentro del PDF de diseño (ver designDetect.ts). */
@@ -286,6 +296,11 @@ export type ProductionSettings = {
   gapMm: number; // 6
   /** Rotaciones permitidas, en grados. */
   rotations: (0 | 180)[];
+  /**
+   * Mangas: también probar girarlas 90° (cambia el hilo de la tela; en
+   * poliéster sublimado no se nota). Lo decide el motor si ahorra rollo.
+   */
+  sleeveQuarterTurns?: boolean;
   /** Largo máximo de cada tramo del PDF. */
   maxSegmentLengthMm: number;
   /** Margen a los costados del rollo. */
@@ -313,7 +328,8 @@ export type PlacedText = {
    * Giro en grados, sentido horario como se ve la pieza. 180 = dado vuelta
    * (pieza dibujada al revés); 90/270 = vertical (indicador de talle).
    */
-  rotation?: TextRotation;
+  /** Giro en grados (horario). Normalmente 0/90/180/270; en el short sigue la cintura. */
+  rotation?: number;
   /** Qué punto del texto cae en `center`: su centro (por defecto), el inicio o el fin. */
   align?: TextAlign;
 };
@@ -329,6 +345,8 @@ export type PlacedElement = {
   widthMm: number;
   heightMm: number;
   filePath?: string | null;
+  /** Giro en grados (horario) alrededor del centro. */
+  rotation?: number;
 };
 
 export type Warning = { pieceId: string; message: string };
@@ -359,9 +377,12 @@ export type PrintPiece = {
 };
 
 /** Pieza acomodada en el rollo. */
+export type Rotation = 0 | 90 | 180 | 270;
+
 export type PlacedPiece = {
   print: PrintPiece;
-  rotation: 0 | 180;
+  /** Giro alrededor del centro de la pieza (90 = horario en el rollo). */
+  rotation: Rotation;
   /** Traslación aplicada después de rotar (coordenadas del rollo). */
   dx: number;
   dy: number;
