@@ -1,7 +1,7 @@
 "use client";
 
 import { bbox, offset } from "@/lib/produccion/geometry";
-import { gridUnit, shoulderTop } from "@/lib/produccion/rules";
+import { gridUnit, gridUnitY, shoulderTop } from "@/lib/produccion/rules";
 import type { Poly, PrintPiece, RollLayout } from "@/lib/produccion/types";
 
 /** Fuentes subidas ya registradas en el navegador: familia CSS y alto de mayúsculas. */
@@ -55,8 +55,10 @@ export function PiecePreview({
   const vb = `${b.minX - pad} ${b.minY - pad} ${b.maxX - b.minX + 2 * pad} ${b.maxY - b.minY + 2 * pad}`;
   const lines: number[] = [];
   for (let i = 1; i < 10; i++) lines.push(b.minX + i * u);
+  // Filas: en el short la grilla es 10 × 10 (décimos del alto).
+  const uy = gridUnitY(piece);
   const rows: number[] = [];
-  for (let y = top.y + u; y < b.maxY; y += u) rows.push(y);
+  for (let y = top.y + uy; y < b.maxY - 0.5; y += uy) rows.push(y);
 
   return (
     <figure className="flex flex-col items-center gap-1">

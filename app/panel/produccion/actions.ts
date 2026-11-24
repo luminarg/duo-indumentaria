@@ -88,20 +88,26 @@ export async function saveDesign(input: {
   componentId?: string | null;
   modelId: string | null;
   variant: "jugador" | "arquero";
+  /** Grupo de talles (niños/adultos) si el artículo lleva un diseño por grupo; null = todos. */
+  sizeGroup?: "nino" | "adulto" | null;
   config: DesignConfig;
 }) {
   const user = await requireTeamMember();
   const supabase = await createClient();
   let q = supabase
     .from("order_designs")
-    .select("version")
+    .select("*")
     .eq("order_id", input.orderId)
     .eq("variant", input.variant)
     .order("version", { ascending: false })
-    .limit(1);
+    .limit(50);
   q = input.requirementId ? q.eq("requirement_id", input.requirementId) : q.is("requirement_id", null);
   q = input.componentId ? q.eq("component_id", input.componentId) : q.is("component_id", null);
-  const { data: last } = await q;
+  if (input.sizeGroup) q = q.eq("size_group", input.sizeGroup);
+  const { data: lastRaw } = await q;
+  // Sin grupo: la versión se cuenta entre los diseños sin grupo (si la columna
+  // existe; antes de la migración 034 no está y todos son "sin grupo").
+  const last = input.sizeGroup ? lastRaw : (lastRaw ?? []).filter((d) => !(d as { size_group?: string | null }).size_group);
   const version = (last?.[0]?.version ?? 0) + 1;
   const { error } = await supabase.from("order_designs").insert({
     order_id: input.orderId,
@@ -112,6 +118,7 @@ export async function saveDesign(input: {
     version,
     config: input.config,
     created_by: user.id,
+    ...(input.sizeGroup ? { size_group: input.sizeGroup } : {}),
   });
   if (error) throw new Error("No se pudo guardar el diseño: " + error.message);
   revalidatePath(`/panel/produccion/${input.orderId}`);
@@ -128,6 +135,7 @@ export async function saveLayout(input: {
   requirementId?: string | null;
   componentId?: string | null;
   variant?: string | null;
+  sizeGroup?: "nino" | "adulto" | null;
 }) {
   const user = await requireTeamMember();
   if (!input.orderId || !input.pdfPath || !Number.isFinite(input.lengthMm)) throw new Error("Faltan datos de la tizada");
@@ -142,6 +150,7 @@ export async function saveLayout(input: {
     component_id: input.componentId ?? null,
     variant: input.variant ?? null,
     created_by: user.id,
+    ...(input.sizeGroup ? { size_group: input.sizeGroup } : {}),
   });
   if (error) throw new Error("No se pudo registrar la tizada: " + error.message);
 
@@ -379,7 +388,7 @@ export async function saveCombinedLayout(input: {
   lengthMm: number;
   pieceCount: number;
   /** Cada prenda del rollo: de un pedido (orderId) o de un trabajo libre (jobId). */
-  contexts: { orderId: string | null; jobId?: string | null; requirementId: string | null; componentId: string | null; variant: "jugador" | "arquero" }[];
+  contexts: { orderId: string | null; jobId?: string | null; requirementId: string | null; componentId: string | null; variant: "jugador" | "arquero"; sizeGroup?: "nino" | "adulto" | null }[];
   /** Pedidos que con este rollo quedan con todas sus prendas: pasan a sublimación. */
   advanceOrderIds: string[];
 }) {
@@ -412,6 +421,7 @@ export async function saveCombinedLayout(input: {
       requirement_id: c.requirementId || null,
       component_id: c.componentId || null,
       variant: c.variant,
+      ...(c.sizeGroup ? { size_group: c.sizeGroup } : {}),
     }))
   );
   if (e2) throw new Error("Se guardó el rollo pero no qué prendas lleva: " + e2.message);

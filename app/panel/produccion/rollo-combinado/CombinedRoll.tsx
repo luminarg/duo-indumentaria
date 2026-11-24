@@ -8,7 +8,7 @@ import { Button } from "../../../components/ui/Button";
 import { Input, Select } from "../../../components/ui/Input";
 import { assemblyFromRows, normalizeConfig, pieceFromRow, type AssemblyRow, type OrderItemRow, type PatternPieceRow } from "@/lib/produccion/db";
 import { buildContext, contextGarments, designFiles, type ContextBuild } from "@/lib/produccion/contextBuild";
-import { ctxKey, orderContexts } from "@/lib/produccion/contexts";
+import { ctxKey, findDesign, itemGroup, orderContexts, type GroupKey } from "@/lib/produccion/contexts";
 import { addCollarPanel } from "@/lib/produccion/collars";
 import { exportRollPdf, pdfMeasurer } from "@/lib/produccion/exportPdf";
 import { nest, DEFAULT_SETTINGS } from "@/lib/produccion/nesting";
@@ -23,8 +23,8 @@ import { RollEditor } from "../RollEditor";
 import { listDesignTemplates, saveCombinedLayout } from "../actions";
 import { downloadProductionFiles, uploadToProduction } from "../upload";
 
-type DesignRow = { id: string; order_id: string; requirement_id: string | null; component_id: string | null; model_id: string | null; variant: string; version: number; config: unknown };
-type Covered = { order_id: string | null; requirement_id: string | null; component_id: string | null; variant: string | null };
+type DesignRow = { id: string; order_id: string; requirement_id: string | null; component_id: string | null; model_id: string | null; variant: string; version: number; config: unknown; size_group?: string | null };
+type Covered = { order_id: string | null; requirement_id: string | null; component_id: string | null; variant: string | null; size_group?: string | null };
 export type CombinedOrder = {
   id: string;
   /** Trabajo libre (escalado para un tercero), no un pedido. */
@@ -48,6 +48,7 @@ type Row = {
   requirementId: string;
   componentId: string;
   variant: "jugador" | "arquero";
+  group: GroupKey;
   design: DesignRow | null;
   garments: number;
   done: boolean;
@@ -75,15 +76,18 @@ export function CombinedRoll({
   const rows: Row[] = useMemo(
     () =>
       orders.flatMap((o) => {
-        const covered = new Set(o.covered.map((c) => ctxKey(c.requirement_id, c.component_id, c.variant!)));
-        return orderContexts(o.requirements, o.items, components).map((c) => {
-          const design = o.designs.find((d) => (d.requirement_id ?? "") === c.requirementId && (d.component_id ?? "") === c.componentId && d.variant === c.variant) ?? null;
-          const its = c.requirementId ? o.items.filter((i) => i.requirement_id === c.requirementId) : o.items;
+        const covered = new Set(o.covered.map((c) => ctxKey(c.requirement_id, c.component_id, c.variant!, c.size_group)));
+        return orderContexts(o.requirements, o.items, components, o.designs, sizeLabels).map((c) => {
+          // Un grupo sin diseño propio usa el de todos los talles (si hay).
+          const design = findDesign(o.designs, c.requirementId, c.componentId, c.variant, c.group) ?? (c.group ? findDesign(o.designs, c.requirementId, c.componentId, c.variant, "") : null);
+          const its = (c.requirementId ? o.items.filter((i) => i.requirement_id === c.requirementId) : o.items).filter((i) => !c.group || itemGroup(i, sizeLabels) === c.group);
           const garments = its.filter((i) => (i.variant === "arquero" ? "arquero" : "jugador") === c.variant).reduce((s, i) => s + (i.quantity ?? 1), 0);
-          return { id: `${o.id}|${c.key}`, order: o, key: c.key, label: c.label, requirementId: c.requirementId, componentId: c.componentId, variant: c.variant, design, garments, done: covered.has(c.key) };
+          // Un rollo de "todos los talles" cubre también los grupos.
+          const done = covered.has(c.key) || covered.has(c.baseKey);
+          return { id: `${o.id}|${c.key}`, order: o, key: c.key, label: c.label, requirementId: c.requirementId, componentId: c.componentId, variant: c.variant, group: c.group, design, garments, done };
         });
       }),
-    [orders, components]
+    [orders, components, sizeLabels]
   );
 
   const [selected, setSelected] = useState<Set<string>>(
@@ -161,7 +165,7 @@ export function CombinedRoll({
         if (!mp.length) throw new Error(`${r.order.number} · ${r.label}: el molde del diseño no tiene piezas cargadas.`);
         const asm = assemblyFromRows(assembly.filter((a) => a.model_id === modelId));
         const comp = components.find((c) => c.id === r.componentId) ?? null;
-        const its = r.requirementId ? r.order.items.filter((it) => it.requirement_id === r.requirementId) : r.order.items;
+        const its = (r.requirementId ? r.order.items.filter((it) => it.requirement_id === r.requirementId) : r.order.items).filter((it) => !r.group || itemGroup(it, sizeLabels) === r.group);
         const garments = contextGarments(its, sizeLabels, r.variant, comp, r.id);
         const build = buildContext({
           config: configs[i],
@@ -256,6 +260,7 @@ export function CombinedRoll({
           requirementId: r.requirementId || null,
           componentId: r.componentId || null,
           variant: r.variant,
+          sizeGroup: r.group || null,
         })),
         advanceOrderIds: advance,
       });

@@ -37,6 +37,7 @@ import type { AnchoredElement, DesignConfig, PieceKind, PrintPiece, RollLayout, 
 import Link from "next/link";
 import { cn } from "@/lib/cn";
 import { isLeg } from "@/lib/produccion/types";
+import { GROUP_LABEL, ctxKey, findDesign, itemGroup, orderContexts, type GroupKey } from "@/lib/produccion/contexts";
 import { deleteDesignTemplate, listDesignTemplates, listProductionFonts, saveDesignTemplate, saveDesign, saveJob, saveJobLayout, saveLayout, signedProductionUrls } from "../actions";
 import { downloadProductionFiles, uploadFont, uploadToProduction } from "../upload";
 import { PiecePreview, type FontInfo } from "../Previews";
@@ -58,9 +59,9 @@ function sizeSortKey(label: string): number {
 
 type Requirement = { id: string; description: string; article_type_id: string | null };
 type Model = { id: string; name: string; neck: string | null; base_size_label: string; article_type_id: string | null };
-type DesignRow = { id: string; requirement_id: string | null; component_id?: string | null; model_id: string | null; variant: string; version: number; config: unknown; created_at: string };
+type DesignRow = { id: string; requirement_id: string | null; component_id?: string | null; model_id: string | null; variant: string; version: number; config: unknown; created_at: string; size_group?: string | null };
 type ComponentRow = { id: string; article_type_id: string; name: string; model_id: string | null; copy_number: boolean; copy_name: boolean; sort_order: number };
-type LayoutRow = { id: string; linear_meters: number; piece_count: number; pdf_path: string | null; created_at: string; requirement_id?: string | null; component_id?: string | null; variant?: string | null };
+type LayoutRow = { id: string; linear_meters: number; piece_count: number; pdf_path: string | null; created_at: string; requirement_id?: string | null; component_id?: string | null; variant?: string | null; size_group?: string | null };
 
 export function ProductionWorkbench(props: {
   orderId: string;
@@ -75,7 +76,7 @@ export function ProductionWorkbench(props: {
   layouts: LayoutRow[];
   components?: ComponentRow[];
   /** Prendas de este pedido que ya salieron en rollos con otros pedidos. */
-  sharedCoverage?: { requirement_id: string | null; component_id: string | null; variant: string }[];
+  sharedCoverage?: { requirement_id: string | null; component_id: string | null; variant: string; size_group?: string | null }[];
   /** Trabajo libre (escalado para un tercero): sin pedido, sin artículos ni estados. */
   job?: { id: string; onModelChange?: (modelId: string) => void };
 }) {
@@ -86,9 +87,10 @@ export function ProductionWorkbench(props: {
     const req = requirements.find((r) => r.id === reqId);
     return (props.components ?? []).filter((c) => req?.article_type_id && c.article_type_id === req.article_type_id).sort((a, b) => a.sort_order - b.sort_order);
   };
-  // Diseño guardado y molde sugerido para un artículo + prenda + variante.
-  const contextFor = (reqId: string, compId: string, v: "jugador" | "arquero") => {
-    const saved = designs.find((d) => (d.requirement_id ?? "") === reqId && (d.component_id ?? "") === compId && d.variant === v);
+  // Diseño guardado y molde sugerido para un artículo + prenda + variante (+
+  // grupo de talles). Un grupo sin diseño propio arranca del de todos los talles.
+  const contextFor = (reqId: string, compId: string, v: "jugador" | "arquero", g: GroupKey = "") => {
+    const saved = findDesign(designs, reqId, compId, v, g) ?? (g ? findDesign(designs, reqId, compId, v, "") : null);
     const req = requirements.find((r) => r.id === reqId);
     const comp = componentsFor(reqId).find((c) => c.id === compId);
     const match = models.find((m) => req?.article_type_id && m.article_type_id === req.article_type_id);
@@ -102,8 +104,13 @@ export function ProductionWorkbench(props: {
   const [requirementId, setRequirementId] = useState<string>(firstReq);
   const [componentId, setComponentId] = useState<string>(firstComp);
   const [variant, setVariant] = useState<"jugador" | "arquero">("jugador");
-  const [modelId, setModelId] = useState<string>(() => contextFor(firstReq, firstComp, "jugador").modelId);
-  const [config, setConfig] = useState<DesignConfig>(() => contextFor(firstReq, firstComp, "jugador").config);
+  // Grupo de talles: "" = todos juntos; niños o adultos = cada uno con su PDF base.
+  const [sizeGroup, setSizeGroup] = useState<GroupKey>(() => {
+    const d = designs.find((x) => (x.requirement_id ?? "") === firstReq && (x.component_id ?? "") === firstComp && x.variant === "jugador");
+    return ((d?.size_group as GroupKey) ?? "") || "";
+  });
+  const [modelId, setModelId] = useState<string>(() => contextFor(firstReq, firstComp, "jugador", sizeGroup).modelId);
+  const [config, setConfig] = useState<DesignConfig>(() => contextFor(firstReq, firstComp, "jugador", sizeGroup).config);
   const [layout, setLayout] = useState<RollLayout | null>(null);
   // Largo de cada paño (página del PDF) y del rollo de tela/papel, en metros.
   const [panoM, setPanoM] = useState(5);
@@ -117,13 +124,14 @@ export function ProductionWorkbench(props: {
   // Piezas sueltas (bandera, cuello, reposición) que se suman al rollo.
   const [extra, setExtra] = useState<{ prints: PrintPiece[]; files: Record<string, Uint8Array> }>({ prints: [], files: {} });
 
-  const selectContext = (reqId: string, compId: string, v: "jugador" | "arquero") => {
+  const selectContext = (reqId: string, compId: string, v: "jugador" | "arquero", g: GroupKey = "") => {
     const comps = componentsFor(reqId);
     const cid = comps.some((c) => c.id === compId) ? compId : (comps[0]?.id ?? "");
-    const c = contextFor(reqId, cid, v);
+    const c = contextFor(reqId, cid, v, g);
     setRequirementId(reqId);
     setComponentId(cid);
     setVariant(v);
+    setSizeGroup(g);
     setModelId(c.modelId);
     setConfig(c.config);
     setLayout(null);
@@ -276,13 +284,20 @@ export function ProductionWorkbench(props: {
       }
     });
 
+  // Grupos de talles que tiene el artículo elegido (para ofrecer separarlos).
+  const groupsPresent = useMemo(() => {
+    const its = (requirementId ? items.filter((i) => i.requirement_id === requirementId) : items).filter((i) => (i.variant === "arquero" ? "arquero" : "jugador") === variant);
+    return [...new Set(its.map((i) => itemGroup(i, sizeLabels)))];
+  }, [items, requirementId, variant, sizeLabels]);
+
   const garments = useMemo(() => {
-    const filtered = requirementId ? items.filter((i) => i.requirement_id === requirementId) : items;
+    const byReq = requirementId ? items.filter((i) => i.requirement_id === requirementId) : items;
+    const filtered = sizeGroup ? byReq.filter((i) => itemGroup(i, sizeLabels) === sizeGroup) : byReq;
     return garmentsFromItems(filtered, sizeLabels)
       .filter((g) => g.variant === variant)
       // En un combo, cada prenda lleva solo los datos que corresponden (el short: número, sin nombre).
       .map((g) => (component ? { ...g, name: component.copy_name ? g.name : null, number: component.copy_number ? g.number : null } : g));
-  }, [items, requirementId, sizeLabels, variant, component]);
+  }, [items, requirementId, sizeLabels, variant, component, sizeGroup]);
 
   const build = useMemo(
     () => buildPrintPieces({ pieces, assembly, design: designConfig, garments, measure }),
@@ -438,9 +453,12 @@ export function ProductionWorkbench(props: {
           componentId: componentId || null,
           modelId: modelId === SAMPLE ? null : modelId,
           variant,
+          sizeGroup: sizeGroup || null,
           config,
         });
-        setMessage(`Diseño guardado (versión ${version}). Ya se puede usar en el rollo con varios pedidos.`);
+        setMessage(
+          `Diseño guardado${sizeGroup ? ` para ${GROUP_LABEL[sizeGroup]}` : ""} (versión ${version}). Ya se puede usar en el rollo con varios pedidos.`
+        );
       } catch (e) {
         setError(e instanceof Error ? e.message : String(e));
       }
@@ -608,29 +626,17 @@ export function ProductionWorkbench(props: {
       saveBlob(await makePdf(layout), `rollo-${orderId.slice(0, 8)}.pdf`);
     });
 
-  // Todas las prendas del pedido (artículo × prenda × variante) que llevan rollo.
-  const ctxKey = (req: string, comp: string, v: string) => `${req}|${comp}|${v}`;
-  const allContexts = useMemo(() => {
-    const out: { key: string; label: string }[] = [];
-    const reqIds = requirements.length ? requirements.map((r) => r.id) : [""];
-    for (const req of reqIds) {
-      const its = req ? items.filter((i) => i.requirement_id === req) : items;
-      const variants = [...new Set(its.map((i) => (i.variant === "arquero" ? "arquero" : "jugador")))];
-      const comps = componentsFor(req);
-      const reqName = requirements.find((r) => r.id === req)?.description ?? "Prendas";
-      for (const v of variants)
-        for (const c of comps.length ? comps : [null])
-          out.push({ key: ctxKey(req, c?.id ?? "", v), label: [reqName, c?.name, v === "arquero" ? "arquero" : null].filter(Boolean).join(" · ") });
-    }
-    return out;
-    // componentsFor depende solo de props
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [requirements, items, props.components]);
+  // Todas las prendas del pedido (artículo × prenda × variante × grupo de
+  // talles, si se separó) que llevan rollo.
+  const allContexts = useMemo(
+    () => orderContexts(requirements, items, props.components ?? [], designs, sizeLabels),
+    [requirements, items, props.components, designs, sizeLabels]
+  );
   const [savedKeys, setSavedKeys] = useState<Set<string>>(
     () =>
       new Set([
-        ...layouts.filter((l) => l.variant).map((l) => ctxKey(l.requirement_id ?? "", l.component_id ?? "", l.variant!)),
-        ...(props.sharedCoverage ?? []).map((l) => ctxKey(l.requirement_id ?? "", l.component_id ?? "", l.variant)),
+        ...layouts.filter((l) => l.variant).map((l) => ctxKey(l.requirement_id ?? "", l.component_id ?? "", l.variant!, l.size_group)),
+        ...(props.sharedCoverage ?? []).map((l) => ctxKey(l.requirement_id ?? "", l.component_id ?? "", l.variant, l.size_group)),
       ])
   );
   const pendingRolls = allContexts.filter((c) => !savedKeys.has(c.key));
@@ -645,8 +651,9 @@ export function ProductionWorkbench(props: {
         setMessage(`Rollo guardado: ${(layout.lengthMm / 1000).toFixed(2)} m lineales.`);
         return;
       }
-      const key = ctxKey(requirementId, componentId, variant);
-      const missing = pendingRolls.filter((c) => c.key !== key);
+      const key = ctxKey(requirementId, componentId, variant, sizeGroup);
+      // Si este rollo es de todos los talles, cubre también los grupos.
+      const missing = pendingRolls.filter((c) => c.key !== key && !(!sizeGroup && c.baseKey === key));
       await saveLayout({
         orderId,
         pdfPath: path,
@@ -656,6 +663,7 @@ export function ProductionWorkbench(props: {
         requirementId: requirementId || null,
         componentId: componentId || null,
         variant,
+        sizeGroup: sizeGroup || null,
       });
       setSavedKeys((s) => new Set([...s, key]));
       setMessage(
@@ -699,10 +707,22 @@ export function ProductionWorkbench(props: {
             ))}
           </Select>
         )}
-        <Select label="Variante" value={variant} onChange={(e) => selectContext(requirementId, componentId, e.target.value as "jugador" | "arquero")}>
+        <Select label="Variante" value={variant} onChange={(e) => selectContext(requirementId, componentId, e.target.value as "jugador" | "arquero", "")}>
           <option value="jugador">Jugadores</option>
           <option value="arquero">Arquero</option>
         </Select>
+        {!job && (groupsPresent.length > 1 || sizeGroup) && (
+          <Select
+            label="Talles"
+            value={sizeGroup}
+            onChange={(e) => selectContext(requirementId, componentId, variant, e.target.value as GroupKey)}
+            hint={sizeGroup ? "Diseño y PDF base solo de este grupo" : "Niños y adultos con un solo PDF base"}
+          >
+            <option value="">Todos juntos</option>
+            {groupsPresent.includes("nino") && <option value="nino">Solo niños (PDF base propio)</option>}
+            {groupsPresent.includes("adulto") && <option value="adulto">Solo adultos (PDF base propio)</option>}
+          </Select>
+        )}
         <Select label="Molde" value={modelId} onChange={(e) => { setModelId(e.target.value); setLayout(null); job?.onModelChange?.(e.target.value); }}>
           {models.map((m) => (
             <option key={m.id} value={m.id}>
@@ -1154,16 +1174,31 @@ function DesignForm({
                 ))}
               </Select>
             </div>
-            <Select label="Lado" value={el.side} onChange={(e) => setEl(i, { side: e.target.value as WearerSide })}>
-              {SIDE_OPTIONS.map((o) => (
-                <option key={o.value} value={o.value}>{o.label}</option>
-              ))}
-            </Select>
+            {isLeg(el.pieceKind) ? (
+              <>
+                <Select label="Costado (del dibujo)" value={el.side} onChange={(e) => setEl(i, { side: e.target.value as WearerSide })}>
+                  <option value="izquierda">Borde izquierdo de la pieza</option>
+                  <option value="derecha">Borde derecho de la pieza</option>
+                  <option value="centro">Al medio</option>
+                </Select>
+                <p className="text-xs text-zinc-500">Grilla de 10 × 10: 1 unidad = 1/10 del ancho a lo ancho y 1/10 del alto a lo alto. Los números dan el centro del elemento.</p>
+              </>
+            ) : (
+              <Select label="Lado" value={el.side} onChange={(e) => setEl(i, { side: e.target.value as WearerSide })}>
+                {SIDE_OPTIONS.map((o) => (
+                  <option key={o.value} value={o.value}>{o.label}</option>
+                ))}
+              </Select>
+            )}
             <div className="grid grid-cols-2 gap-2">
               {el.side !== "centro" && (
-                <Num label="Unidades desde el costado" step={0.1} value={el.fromSideUnits} onChange={(n) => setEl(i, { fromSideUnits: n })} />
+                <Num label={isLeg(el.pieceKind) ? "Unidades desde el costado (1/10 del ancho)" : "Unidades desde el costado"} step={0.1} value={el.fromSideUnits} onChange={(n) => setEl(i, { fromSideUnits: n })} />
               )}
-              <Num label="Unidades desde el hombro" step={0.1} value={el.fromShoulderTopUnits} onChange={(n) => setEl(i, { fromShoulderTopUnits: n })} />
+              {isLeg(el.pieceKind) ? (
+                <Num label="Unidades desde la base (1/10 del alto)" step={0.1} value={el.fromBaseUnits ?? 10 - el.fromShoulderTopUnits} onChange={(n) => setEl(i, { fromBaseUnits: n })} />
+              ) : (
+                <Num label="Unidades desde el hombro" step={0.1} value={el.fromShoulderTopUnits} onChange={(n) => setEl(i, { fromShoulderTopUnits: n })} />
+              )}
               <Num label="Ancho adulto (mm)" value={el.widthMm.adulto} onChange={(n) => setEl(i, { widthMm: { ...el.widthMm, adulto: n } })} />
               <Num label="Ancho niño (mm)" value={el.widthMm.nino} onChange={(n) => setEl(i, { widthMm: { ...el.widthMm, nino: n } })} />
             </div>
@@ -1224,7 +1259,20 @@ function DesignForm({
                 </Select>
                 <Num label="Alto en el short, adulto (mm)" value={config.number.shortHeightMm?.adulto ?? 100} onChange={(n) => update((c) => ({ ...c, number: { ...c.number, shortHeightMm: { adulto: n, nino: c.number.shortHeightMm?.nino ?? 80 } } }))} />
                 <Num label="Alto en el short, niño (mm)" value={config.number.shortHeightMm?.nino ?? 80} onChange={(n) => update((c) => ({ ...c, number: { ...c.number, shortHeightMm: { adulto: c.number.shortHeightMm?.adulto ?? 100, nino: n } } }))} />
-                <Num label="Centro en el short, unidades desde la cintura" step={0.1} value={config.number.shortFromTopUnits ?? 6} onChange={(n) => update((c) => ({ ...c, number: { ...c.number, shortFromTopUnits: n } }))} hint="Va en el delantero de la pierna" />
+                <Select
+                  label="Número en el short: costado"
+                  value={config.number.shortSide ?? "delantero"}
+                  onChange={(e) => update((c) => ({ ...c, number: { ...c.number, shortSide: e.target.value as NonNullable<DesignConfig["number"]["shortSide"]> } }))}
+                >
+                  <option value="delantero">Borde del delantero de cada pierna</option>
+                  <option value="izquierda">Borde izquierdo de la pieza</option>
+                  <option value="derecha">Borde derecho de la pieza</option>
+                  <option value="centro">Al medio</option>
+                </Select>
+                {(config.number.shortSide ?? "delantero") !== "centro" && (
+                  <Num label="Centro, unidades desde el costado (1/10 del ancho)" step={0.1} value={config.number.shortFromSideUnits ?? 2.5} onChange={(n) => update((c) => ({ ...c, number: { ...c.number, shortFromSideUnits: n } }))} />
+                )}
+                <Num label="Centro, unidades desde la base (1/10 del alto)" step={0.1} value={config.number.shortFromBaseUnits ?? 2.5} onChange={(n) => update((c) => ({ ...c, number: { ...c.number, shortFromBaseUnits: n } }))} />
               </>
             )}
           </div>
@@ -1286,8 +1334,8 @@ function DesignForm({
                 <div />
                 {config.sizeIndicator.shortKind && (
                   <>
-                    <Num label="Unidades desde la esquina, por la cintura" step={0.1} value={config.sizeIndicator.shortAlongWaistUnits ?? 1} onChange={(n) => update((c) => ({ ...c, sizeIndicator: { ...c.sizeIndicator, shortAlongWaistUnits: n } }))} hint="Esquina alta (tiro trasero); gira con la cintura" />
-                    <Num label="Unidades debajo de la cintura" step={0.05} value={config.sizeIndicator.shortBelowWaistUnits ?? 0.35} onChange={(n) => update((c) => ({ ...c, sizeIndicator: { ...c.sizeIndicator, shortBelowWaistUnits: n } }))} />
+                    <Num label="Unidades desde la esquina, por la cintura" step={0.1} value={config.sizeIndicator.shortAlongWaistUnits ?? 1} onChange={(n) => update((c) => ({ ...c, sizeIndicator: { ...c.sizeIndicator, shortAlongWaistUnits: n } }))} hint="Décimos del ancho; desde la esquina alta, gira con la cintura" />
+                    <Num label="Unidades debajo de la cintura" hint="Décimos del alto de la pierna" step={0.05} value={config.sizeIndicator.shortBelowWaistUnits ?? 0.4} onChange={(n) => update((c) => ({ ...c, sizeIndicator: { ...c.sizeIndicator, shortBelowWaistUnits: n } }))} />
                   </>
                 )}
               </div>

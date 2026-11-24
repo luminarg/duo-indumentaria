@@ -39,13 +39,13 @@ export default async function RolloCombinadoPage({ searchParams }: { searchParam
     ids.length ? supabase.from("order_items").select("id, order_id, size_id, size_label, individual_name, individual_number, quantity, variant, requirement_id").in("order_id", ids) : none,
     ids.length ? supabase.from("order_article_requirements").select("id, order_id, description, article_type_id").in("order_id", ids).order("sort_order", { ascending: true }) : none,
     ids.length
-      ? supabase.from("order_designs").select("id, order_id, requirement_id, component_id, model_id, variant, version, config").in("order_id", ids).order("version", { ascending: false })
+      ? supabase.from("order_designs").select("*").in("order_id", ids).order("version", { ascending: false })
       : none,
-    ids.length ? supabase.from("production_layouts").select("order_id, requirement_id, component_id, variant").in("order_id", ids) : none,
+    ids.length ? supabase.from("production_layouts").select("*").in("order_id", ids) : none,
     ids.length || jobIds.length
       ? supabase
           .from("production_layout_items")
-          .select("order_id, job_id, requirement_id, component_id, variant")
+          .select("*")
           .or([ids.length ? `order_id.in.(${ids.join(",")})` : "", jobIds.length ? `job_id.in.(${jobIds.join(",")})` : ""].filter(Boolean).join(","))
       : none,
     supabase.from("sizes").select("id, label"),

@@ -687,7 +687,7 @@ describe("mockup plano", () => {
 });
 
 import { buildContext, contextGarments } from "./contextBuild";
-import { orderContexts } from "./contexts";
+import { findDesign, orderContexts } from "./contexts";
 
 describe("rollo con varios pedidos", () => {
   it("prendas de cada pedido: artículo × prenda del combo × variante", () => {
@@ -697,6 +697,21 @@ describe("rollo con varios pedidos", () => {
       [{ id: "c1", article_type_id: "t1", name: "Remera", sort_order: 0 }, { id: "c2", article_type_id: "t1", name: "Short", sort_order: 1 }]
     );
     expect(ctx.map((c) => c.label)).toEqual(["Combo · Remera", "Combo · Short", "Combo · Remera · arquero", "Combo · Short · arquero"]);
+  });
+
+  it("niños y adultos por separado cuando se guardó un diseño por grupo de talles", () => {
+    const reqs = [{ id: "r1", description: "Remera", article_type_id: null }];
+    const items = [
+      { requirement_id: "r1", variant: "jugador", size_label: "10" },
+      { requirement_id: "r1", variant: "jugador", size_label: "M" },
+    ];
+    // Sin diseños por grupo: una sola prenda (como siempre).
+    expect(orderContexts(reqs, items, []).map((c) => c.label)).toEqual(["Remera"]);
+    // Con un diseño de niños guardado: niños y adultos, cada uno con su PDF base.
+    const ctx = orderContexts(reqs, items, [], [{ requirement_id: "r1", component_id: null, variant: "jugador", size_group: "nino" }]);
+    expect(ctx.map((c) => c.label)).toEqual(["Remera · niños", "Remera · adultos"]);
+    expect(ctx.map((c) => c.key)).toEqual(["r1||jugador|nino", "r1||jugador|adulto"]);
+    expect(findDesign([{ requirement_id: "r1", component_id: null, variant: "jugador", size_group: "nino" }], "r1", "", "jugador", "adulto")).toBeNull();
   });
 
   it("dos pedidos con diseños distintos en un mismo rollo (cada pieza con su fondo)", async () => {
@@ -835,6 +850,7 @@ describe("banderas (piezas sueltas a medida)", () => {
 });
 
 import { guessKinds, type ImportedPiece } from "./vectorImport";
+import { gridUnitY, legGridPoint, yFromShoulderTop } from "./rules";
 
 describe("short", () => {
   // Pierna derecha vista desde afuera: trasero (cintura más alta) a la izquierda.
@@ -861,6 +877,23 @@ describe("short", () => {
     expect(d.e).toBeCloseTo(-425, 1); // centrada en el origen
     expect(i.e).toBeCloseTo(425, 1); // pegada a su derecha
     expect(d.f).toBeCloseTo(i.f, 5); // misma línea de base
+  });
+
+  it("en el short la grilla es 10 × 10: décimos del ancho y décimos del alto", () => {
+    const leg = pieces[0];
+    expect(gridUnit(leg)).toBeCloseTo(85, 5); // 850 / 10
+    expect(gridUnitY(leg)).toBeCloseTo(71, 5); // 710 / 10
+    expect(yFromShoulderTop(leg, 5)).toBeCloseTo(355, 5);
+  });
+
+  it("elementos del short: centro desde la base y el costado, en la grilla 10 × 10", () => {
+    const leg = pieces[0]; // 850 × 710, base en y = 710
+    expect(legGridPoint(leg, "izquierda", 2, 3)).toEqual({ x: 170, y: 710 - 3 * 71 });
+    expect(legGridPoint(leg, "derecha", 1, 0.5).x).toBeCloseTo(850 - 85, 5);
+    const el = { id: "e", label: "Escudo", pieceKind: "pierna_izq" as const, side: "derecha" as const, fromSideUnits: 2, fromShoulderTopUnits: 0, fromBaseUnits: 4, widthMm: { adulto: 60, nino: 50 }, aspect: 1 };
+    const { center } = placeElement(pieces[1], el);
+    expect(center.x).toBeCloseTo(850 - 2 * 85, 5);
+    expect(center.y).toBeCloseTo(710 - 4 * 71, 5);
   });
 
   it("el número del short va en el delantero de la pierna", () => {

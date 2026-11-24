@@ -1,6 +1,6 @@
 import { assemblyTransforms, backgroundTransform, sizeScale } from "./assembly";
 import { area, areaOutside, bbox, compose, intersectionArea, offset, rectPoly, spanAtY, translate } from "./geometry";
-import { baselineY, gridUnit, normalizeSize, placeElement, safeZoneOverflow, shoulderTop, sizeGroupOf, xFromWearerSide, yFromShoulderTop } from "./rules";
+import { baselineY, gridUnit, gridUnitY, legGridPoint, normalizeSize, placeElement, safeZoneOverflow, shoulderTop, sizeGroupOf, xFromWearerSide, yFromShoulderTop } from "./rules";
 import type {
   Affine,
   AssemblyRule,
@@ -251,9 +251,12 @@ export function buildPrintPieces({ pieces, assembly, design, garments, measure }
       if (nr.enabled && g.number && nr.pieceKinds.includes(piece.kind) && isLeg(piece.kind)) {
         // Short: en el delantero de la pierna, a mitad de camino entre el
         // costado (centro de la pieza) y la entrepierna.
+        // Grilla 10 × 10 de la pierna: desde la base y desde un costado; el
+        // número dado es el centro del número.
         const h = nr.shortHeightMm?.[group] ?? 100;
-        const y = yFromShoulderTop(piece, nr.shortFromTopUnits ?? 6);
-        const x = (centerX + (legFrontSide(piece.kind) === "min" ? b.minX : b.maxX)) / 2;
+        const sideSel = nr.shortSide ?? "delantero";
+        const side = sideSel === "delantero" ? (legFrontSide(piece.kind) === "min" ? "izquierda" : "derecha") : sideSel;
+        const { x, y } = legGridPoint(piece, side, nr.shortFromSideUnits ?? 2.5, nr.shortFromBaseUnits ?? 2.5);
         const fit = fitText(g.number, nr.style, h, availableWidth(piece, y, x, design.safeMarginMm), measure);
         texts.push({ kind: "numero", text: g.number, center: { x, y }, heightMm: fit.heightMm, widthMm: fit.widthMm, style: nr.style });
         if (fit.shrunk) pieceWarnings.push({ pieceId: piece.id, message: `El número ${g.number} del short se achicó a ${fit.heightMm.toFixed(0)} mm en talle ${piece.sizeLabel}` });
@@ -317,7 +320,9 @@ export function buildPrintPieces({ pieces, assembly, design, garments, measure }
           // la línea de la cintura hacia el otro costado.
           const c0 = waistCorner(piece);
           angle = c0.angle;
-          const along = (ind.shortAlongWaistUnits ?? 1) * u, below = (ind.shortBelowWaistUnits ?? 0.35) * u;
+          // Grilla del short: a lo largo de la cintura en décimos del ancho,
+          // hacia abajo en décimos del alto.
+          const along = (ind.shortAlongWaistUnits ?? 1) * u, below = (ind.shortBelowWaistUnits ?? 0.4) * gridUnitY(piece);
           center = { x: c0.top.x + c0.dir.x * along + c0.down.x * below, y: c0.top.y + c0.dir.y * along + c0.down.y * below };
         }
         // Todo lo del indicador gira junto alrededor de su centro.

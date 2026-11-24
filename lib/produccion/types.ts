@@ -83,6 +83,12 @@ export type AnchoredElement = {
   fromSideUnits: number;
   /** Distancia del centro del elemento al punto más alto del hombro, en unidades. */
   fromShoulderTopUnits: number;
+  /**
+   * Short: distancia del centro del elemento a la base (ruedo) de la pierna,
+   * en décimos del alto. En el short el costado es el del dibujo (izquierda =
+   * borde izquierdo de la pieza) y se mide en décimos del ancho.
+   */
+  fromBaseUnits?: number;
   /** Ancho del elemento en mm, por grupo de talle (el alto sale de la proporción del archivo). */
   widthMm: Record<SizeGroup, number>;
   /** Proporción alto / ancho del arte. */
@@ -113,8 +119,14 @@ export type NumberRule = {
   frontFromSideUnits?: number;
   /** Número en el short (si pieceKinds incluye una pierna): va en el delantero de la pierna. */
   shortHeightMm?: Record<SizeGroup, number>;
-  /** Centro del número del short, en unidades desde la cintura (punto más alto). */
+  /** Centro del número del short, en unidades desde la cintura (punto más alto). Ya no se usa: ahora va desde la base. */
   shortFromTopUnits?: number;
+  /** Número del short: centro desde la base de la pierna (décimos del alto). */
+  shortFromBaseUnits?: number;
+  /** Número del short: desde qué costado del dibujo; "delantero" = el borde del delantero de cada pierna. */
+  shortSide?: "delantero" | "izquierda" | "derecha" | "centro";
+  /** Número del short: centro desde ese costado (décimos del ancho). */
+  shortFromSideUnits?: number;
   style: TextStyle;
 };
 

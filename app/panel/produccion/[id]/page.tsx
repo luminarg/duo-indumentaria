@@ -26,12 +26,12 @@ export default async function ProduccionPedidoPage({ params }: { params: Promise
       supabase.from("pattern_models").select("id, name, neck, base_size_label, article_type_id").eq("active", true).order("name"),
       supabase
         .from("order_designs")
-        .select("id, requirement_id, component_id, model_id, variant, version, config, created_at")
+        .select("*") // incluye size_group (migración 034) si existe
         .eq("order_id", id)
         .order("version", { ascending: false }),
       supabase
         .from("production_layouts")
-        .select("id, linear_meters, piece_count, pdf_path, created_at, requirement_id, component_id, variant")
+        .select("*")
         .eq("order_id", id)
         .order("created_at", { ascending: false }),
     ]);
@@ -58,7 +58,7 @@ export default async function ProduccionPedidoPage({ params }: { params: Promise
     : { data: [] };
 
   // Prendas que ya salieron en un rollo con varios pedidos.
-  const { data: sharedItems } = await supabase.from("production_layout_items").select("requirement_id, component_id, variant").eq("order_id", id);
+  const { data: sharedItems } = await supabase.from("production_layout_items").select("*").eq("order_id", id);
 
   const sizeLabels = Object.fromEntries((sizes ?? []).map((s) => [s.id, s.label]));
 

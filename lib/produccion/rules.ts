@@ -32,6 +32,18 @@ export function gridUnit(piece: PatternPiece): number {
   return (b.maxX - b.minX) / 10;
 }
 
+/**
+ * Unidad vertical. En la remera es la misma que la horizontal (un décimo del
+ * ancho). En el short la grilla es de 10 × 10: un décimo del ancho a lo ancho
+ * y un décimo del alto a lo alto (las piernas son casi cuadradas, pero cada
+ * talle crece distinto a lo ancho y a lo alto).
+ */
+export function gridUnitY(piece: PatternPiece): number {
+  if (piece.kind !== "pierna_izq" && piece.kind !== "pierna_der") return gridUnit(piece);
+  const b = bbox(piece.outline);
+  return (b.maxY - b.minY) / 10;
+}
+
 export function shoulderTop(piece: PatternPiece): Pt {
   return piece.shoulderPoint ?? highestPoint(piece.outline);
 }
@@ -63,7 +75,22 @@ export function xFromWearerSide(piece: PatternPiece, side: WearerSide, units: nu
 
 /** Y en el dibujo para "N unidades bajando desde el punto más alto del hombro". */
 export function yFromShoulderTop(piece: PatternPiece, units: number): number {
-  return shoulderTop(piece).y + units * gridUnit(piece);
+  return shoulderTop(piece).y + units * gridUnitY(piece);
+}
+
+const isLegKind = (k: PieceKind) => k === "pierna_izq" || k === "pierna_der";
+
+/**
+ * Short: punto de la grilla imaginaria de 10 × 10 de la pierna. X desde el
+ * costado del dibujo ("izquierda" = borde izquierdo de la pieza, "derecha" =
+ * borde derecho, "centro" = al medio) en décimos del ancho; Y desde la base
+ * (abajo) en décimos del alto. Es el centro del elemento.
+ */
+export function legGridPoint(piece: PatternPiece, side: "izquierda" | "derecha" | "centro", fromSideUnits: number, fromBaseUnits: number): Pt {
+  const b = bbox(piece.outline);
+  const ux = gridUnit(piece), uy = gridUnitY(piece);
+  const x = side === "centro" ? (b.minX + b.maxX) / 2 : side === "izquierda" ? b.minX + fromSideUnits * ux : b.maxX - fromSideUnits * ux;
+  return { x, y: baselineY(piece) - fromBaseUnits * uy };
 }
 
 /** Centro y tamaño de un elemento anclado en esta pieza. */
@@ -71,10 +98,9 @@ export function placeElement(piece: PatternPiece, el: AnchoredElement) {
   const group = sizeGroupOf(piece.sizeLabel);
   const w = el.widthMm[group];
   const h = w * el.aspect;
-  const center = {
-    x: xFromWearerSide(piece, el.side, el.fromSideUnits),
-    y: yFromShoulderTop(piece, el.fromShoulderTopUnits),
-  };
+  const center = isLegKind(piece.kind)
+    ? legGridPoint(piece, el.side, el.fromSideUnits, el.fromBaseUnits ?? 10 - el.fromShoulderTopUnits)
+    : { x: xFromWearerSide(piece, el.side, el.fromSideUnits), y: yFromShoulderTop(piece, el.fromShoulderTopUnits) };
   return { center, widthMm: w, heightMm: h };
 }
 

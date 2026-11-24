@@ -38,7 +38,9 @@ export function defaultDesignConfig(): DesignConfig {
       frontSide: "derecha",
       frontFromSideUnits: 2.5,
       shortHeightMm: { adulto: 100, nino: 80 }, // SUPUESTO
-      shortFromTopUnits: 6, // SUPUESTO: abajo en el delantero
+      shortSide: "delantero", // SUPUESTO
+      shortFromSideUnits: 2.5, // décimos del ancho desde el borde del delantero
+      shortFromBaseUnits: 2.5, // décimos del alto desde el ruedo
       style: { font: "Helvetica-Bold", fill: "#141414" },
     },
     name: {
