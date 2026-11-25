@@ -1,5 +1,5 @@
 import { DEFAULT_ASSEMBLY } from "./assembly";
-import { defaultDesignConfig } from "./defaults";
+import { defaultDesignConfig, type GarmentKind } from "./defaults";
 import type { AssemblyRule, DesignConfig, GarmentRequest, PatternPiece, PieceKind } from "./types";
 
 // Conversión entre filas de Supabase y los tipos del motor.
@@ -48,8 +48,8 @@ function withLegs(tag: DesignConfig["sizeTag"]): DesignConfig["sizeTag"] {
 }
 
 /** Completa un config guardado con los valores por defecto (por si se agregan campos nuevos). */
-export function normalizeConfig(raw: unknown, baseSizeLabel?: string): DesignConfig {
-  const d = defaultDesignConfig();
+export function normalizeConfig(raw: unknown, baseSizeLabel?: string, kind: GarmentKind = "remera"): DesignConfig {
+  const d = defaultDesignConfig(kind);
   const c = (raw && typeof raw === "object" ? raw : {}) as Partial<DesignConfig>;
   return {
     ...d,

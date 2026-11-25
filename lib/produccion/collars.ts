@@ -21,6 +21,12 @@ export function addCollarPanel(layout: RollLayout, rule: CollarRule, garments: n
   if (!(h > 0)) throw new Error("El alto de la tira de cuello tiene que ser mayor a 0");
   const color = rule.color || backgroundColor || "#FFFFFF";
   const separatorColor = !rule.separatorColor || rule.separatorColor === "auto" ? contrastOn(color) : rule.separatorColor;
+  return appendCollarStrips(layout, strips, rule, color, separatorColor);
+}
+
+/** Agrega `strips` tiras ya definidas (color y separador resueltos) al final del rollo. */
+export function appendCollarStrips(layout: RollLayout, strips: number, rule: CollarRule, color: string, separatorColor: string): RollLayout {
+  const h = rule.stripHeightMm;
   const maxSeg = layout.settings.maxSegmentLengthMm;
   const perSegment = Math.max(1, Math.floor(maxSeg / h));
   const segments = layout.segments.map((g) => ({ ...g }));
@@ -29,10 +35,13 @@ export function addCollarPanel(layout: RollLayout, rule: CollarRule, garments: n
   let lastY = 0;
   for (const p of layout.placed) for (const q of p.outer) if (q.y > lastY) lastY = q.y;
   let y = layout.placed.length ? lastY + layout.settings.gapMm : 0;
+  // Rollo combinado: los paneles de cada pedido van todos juntos al final,
+  // uno a continuación del otro.
+  for (const g of segments) if (g.collars) y = Math.max(y, g.collars.endMm);
   let left = strips;
   // Primero, lo que entre en el último paño (así no queda en una hoja aparte).
   const last = segments.at(-1);
-  if (last && !last.collars && layout.placed.length) {
+  if (last && !last.collars && layout.placed.length && y >= last.startMm) {
     const n = Math.min(left, Math.floor((last.startMm + maxSeg - y) / h));
     if (n > 0) {
       last.endMm = y + n * h;

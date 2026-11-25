@@ -4,13 +4,14 @@ import { PageHeader } from "../../../components/ui/PageHeader";
 import { Card } from "../../../components/ui/Card";
 import { EmptyState } from "../../../components/ui/EmptyState";
 import { NewJobForm } from "./NewJobForm";
+import { RowStatus } from "../RowStatus";
 
 // Trabajos libres: escalado de diseños para terceros, sin pedido.
 export default async function TrabajosPage() {
   const supabase = await createClient();
   const { data: jobs } = await supabase
     .from("production_jobs")
-    .select("id, client_name, notes, items, created_at, updated_at, pattern_models(name)")
+    .select("*, pattern_models(name)") // * = incluye status (migración 035) si existe
     .order("updated_at", { ascending: false })
     .limit(200);
 
@@ -36,6 +37,7 @@ export default async function TrabajosPage() {
                   <th className="px-5 py-3 font-medium">Moldería</th>
                   <th className="px-5 py-3 font-medium">Prendas</th>
                   <th className="px-5 py-3 font-medium">Actualizado</th>
+                  <th className="px-5 py-3 font-medium">Estado</th>
                 </tr>
               </thead>
               <tbody>
@@ -53,6 +55,9 @@ export default async function TrabajosPage() {
                       <td className="px-5 py-3 text-zinc-600">{model ?? "—"}</td>
                       <td className="px-5 py-3 text-zinc-600">{items.reduce((s, i) => s + (i.qty ?? 1), 0)}</td>
                       <td className="px-5 py-3 text-zinc-500">{new Date(j.updated_at).toLocaleDateString("es-AR")}</td>
+                      <td className="px-5 py-3">
+                        <RowStatus kind="job" id={j.id} value={(j as { status?: string | null }).status ?? ""} name={j.client_name} />
+                      </td>
                     </tr>
                   );
                 })}

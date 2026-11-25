@@ -3,6 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
+import { JOB_STATUSES } from "@/lib/produccion/jobStatus";
 import type { DesignConfig, PieceKind } from "@/lib/produccion/types";
 import { FONT_FOLDER, fontNameFromPath, fontSlug, type FontEntry } from "@/lib/produccion/fonts";
 import type { CustomTemplate } from "@/lib/produccion/templates";
@@ -331,6 +332,18 @@ export async function deleteJob(id: string) {
   const { error } = await supabase.from("production_jobs").delete().eq("id", id);
   if (error) throw new Error("No se pudo borrar el trabajo: " + error.message);
   revalidatePath("/panel/produccion/trabajos");
+  revalidatePath("/panel/produccion");
+}
+
+/** Estado de un trabajo libre, puesto a mano ("" = automático). Necesita la migración 035. */
+export async function setJobStatus(id: string, status: string) {
+  await requireTeamMember();
+  if (status && !(JOB_STATUSES as readonly string[]).includes(status)) throw new Error("Estado inválido");
+  const supabase = await createClient();
+  const { error } = await supabase.from("production_jobs").update({ status: status || null }).eq("id", id);
+  if (error) throw new Error("No se pudo cambiar el estado (¿corriste la migración 035?): " + error.message);
+  revalidatePath("/panel/produccion/trabajos");
+  revalidatePath("/panel/produccion");
 }
 
 export async function saveJobLayout(input: { jobId: string; pdfPath: string; lengthMm: number; pieceCount: number }) {

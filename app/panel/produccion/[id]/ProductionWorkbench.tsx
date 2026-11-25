@@ -20,7 +20,7 @@ import { templateFromFile } from "@/lib/produccion/templateImport";
 import { normalizeSize } from "@/lib/produccion/rules";
 import { TemplateEditor } from "./TemplateEditor";
 import { mockupLayout } from "@/lib/produccion/mockup";
-import { pdfPagesToCanvases, pdfToPngBlob } from "@/lib/produccion/pdfRaster";
+import { dominantColorInPieces, pdfPagesToCanvases, pdfToPngBlob } from "@/lib/produccion/pdfRaster";
 import { joinViews, renderPhotoView, type PieceRaster } from "@/lib/produccion/photoMockup";
 import { bbox as polyBox } from "@/lib/produccion/geometry";
 import { shoulderTop } from "@/lib/produccion/rules";
@@ -35,6 +35,7 @@ import { sampleMolds } from "@/lib/produccion/sampleMolds";
 import { DEFAULT_ASSEMBLY } from "@/lib/produccion/assembly";
 import type { AnchoredElement, DesignConfig, PieceKind, PrintPiece, RollLayout, TextAlign, TextRotation, WearerSide } from "@/lib/produccion/types";
 import Link from "next/link";
+import { elementDefaults, type GarmentKind } from "@/lib/produccion/defaults";
 import { cn } from "@/lib/cn";
 import { isLeg } from "@/lib/produccion/types";
 import { GROUP_LABEL, ctxKey, findDesign, itemGroup, orderContexts, type GroupKey } from "@/lib/produccion/contexts";
@@ -89,6 +90,11 @@ export function ProductionWorkbench(props: {
   };
   // Diseño guardado y molde sugerido para un artículo + prenda + variante (+
   // grupo de talles). Un grupo sin diseño propio arranca del de todos los talles.
+  // Short: el molde tiene piernas y no tiene frente (cambia los valores por defecto).
+  const garmentKindOf = (mid: string): GarmentKind => {
+    const kinds = props.pieces.filter((p) => p.model_id === mid).map((p) => p.kind);
+    return kinds.some((k) => k === "pierna_izq" || k === "pierna_der") && !kinds.includes("frente") ? "short" : "remera";
+  };
   const contextFor = (reqId: string, compId: string, v: "jugador" | "arquero", g: GroupKey = "") => {
     const saved = findDesign(designs, reqId, compId, v, g) ?? (g ? findDesign(designs, reqId, compId, v, "") : null);
     const req = requirements.find((r) => r.id === reqId);
@@ -96,7 +102,7 @@ export function ProductionWorkbench(props: {
     const match = models.find((m) => req?.article_type_id && m.article_type_id === req.article_type_id);
     const modelId = saved?.model_id ?? comp?.model_id ?? match?.id ?? models[0]?.id ?? SAMPLE;
     const base = models.find((m) => m.id === modelId)?.base_size_label;
-    return { modelId, config: normalizeConfig(saved?.config, base) };
+    return { modelId, config: normalizeConfig(saved?.config, base, garmentKindOf(modelId)) };
   };
 
   const firstReq = requirements[0]?.id ?? "";
@@ -318,7 +324,12 @@ export function ProductionWorkbench(props: {
     for (const [size] of countBySize) {
       const g = garments.find((x) => x.sizeLabel === size && (x.name || x.number)) ?? garments.find((x) => x.sizeLabel === size);
       if (!g) continue;
-      const prints = build.prints.filter((p) => p.garment.orderItemId === g.orderItemId && (p.piece.kind === "frente" || p.piece.kind === "espalda" || isLeg(p.piece.kind)));
+      // Short: la pierna derecha a la izquierda de la pantalla y la izquierda a
+      // la derecha (los delanteros enfrentados, como se ve armado).
+      const ORDER = ["frente", "espalda", "pierna_der", "pierna_izq"];
+      const prints = build.prints
+        .filter((p) => p.garment.orderItemId === g.orderItemId && (p.piece.kind === "frente" || p.piece.kind === "espalda" || isLeg(p.piece.kind)))
+        .sort((a, b) => ORDER.indexOf(a.piece.kind) - ORDER.indexOf(b.piece.kind));
       if (prints.length) out.push({ size, prints });
     }
     return out;
@@ -359,6 +370,11 @@ export function ProductionWorkbench(props: {
         // Buscar las piezas dibujadas y sobre qué talle está hecho el diseño.
         const { prim } = await pdfPrimitives(pdf.bytes);
         const det = detectDesignPieces(prim, pieces);
+        // El color que predomina en el fondo del arte (mirando la imagen, no
+        // los trazos: sirve con degradés, imágenes y transparencias). Es el
+        // fondo de las piezas y el de las tiras de cuello.
+        const seen = await dominantColorInPieces(pdf.bytes, Object.values(det.pieces).map((r) => r!.outline)).catch(() => null);
+        const dominant = seen ?? det.dominantColor;
         update((c) => ({
           ...c,
           baseSizeLabel: det.baseSizeLabel ?? c.baseSizeLabel,
@@ -370,14 +386,14 @@ export function ProductionWorkbench(props: {
             widthMm: pdf.widthMm,
             heightMm: pdf.heightMm,
             pieces: det.pieces,
-            color: det.dominantColor ?? c.background.color,
+            color: dominant ?? c.background.color,
           },
         }));
         const found = Object.keys(det.pieces).length;
         if (det.baseSizeLabel) {
           setMessage(
             `Diseño hecho sobre el talle ${det.baseSizeLabel}: se reconocieron ${found} piezas.` +
-              (det.dominantColor ? ` Color de fondo: ${det.dominantColor}.` : "") +
+              (dominant ? ` Color de fondo (el que predomina en el arte): ${dominant}.` : "") +
               (det.notes.length ? ` ${det.notes.join(" ")}` : "")
           );
         } else {
@@ -753,7 +769,7 @@ export function ProductionWorkbench(props: {
       )}
 
       <div className="grid gap-6 lg:grid-cols-[380px_1fr]">
-        <DesignForm config={config} update={update} onBackground={onBackground} onElementFile={onElementFile} onIndicatorFile={onIndicatorFile} fonts={fontList} onFontFile={onFontFile} onCollarFile={onCollarFile} garmentCount={garments.length} hasLegs={pieces.some((p) => isLeg(p.kind))}
+        <DesignForm config={config} update={update} onBackground={onBackground} onElementFile={onElementFile} onIndicatorFile={onIndicatorFile} fonts={fontList} onFontFile={onFontFile} onCollarFile={onCollarFile} garmentCount={garments.length} hasLegs={pieces.some((p) => isLeg(p.kind))} garmentKind={garmentKindOf(modelId)}
           template={{ canvas, custom: customTemplates, onUpload: onTemplateUpload, onDelete: onTemplateDelete }} />
 
         <div className="flex flex-col gap-4">
@@ -1034,6 +1050,7 @@ function DesignForm({
   garmentCount,
   template,
   hasLegs,
+  garmentKind,
 }: {
   config: DesignConfig;
   update: (fn: (c: DesignConfig) => DesignConfig) => void;
@@ -1045,16 +1062,35 @@ function DesignForm({
   onCollarFile: (f: File) => void;
   garmentCount: number;
   hasLegs: boolean;
+  garmentKind: GarmentKind;
   template: { canvas: CanvasInfo; custom: CustomTemplate[]; onUpload: (f: File, name: string) => void; onDelete: (id: string) => void };
 }) {
   const fontSelect = (label: string, value: string | undefined, set: (font: string) => void) => (
     <FontSelect label={label} value={value} fonts={fonts} onChange={set} onUpload={async (f) => { const p = await onFontFile(f); if (p) set(p); }} />
   );
-  const setEl = (i: number, patch: Partial<AnchoredElement>) =>
+  // Elementos recién agregados: mientras no se toque su ubicación, la
+  // etiqueta decide dónde va (escudo/marca o duo, en remera o short).
+  const [autoEls, setAutoEls] = useState<Set<string>>(new Set());
+  const setEl = (i: number, patch: Partial<AnchoredElement>) => {
+    const el = config.elements[i];
+    const positional = ["pieceKind", "side", "fromSideUnits", "fromShoulderTopUnits", "fromBaseUnits"].some((k) => k in patch);
+    if (positional && autoEls.has(el.id)) setAutoEls((s) => { const n = new Set(s); n.delete(el.id); return n; });
+    const auto = !positional && patch.label !== undefined && autoEls.has(el.id) ? elementDefaults(patch.label, garmentKind, i) : {};
     update((c) => {
-      c.elements[i] = { ...c.elements[i], ...patch };
+      c.elements[i] = { ...c.elements[i], ...patch, ...auto };
       return c;
     });
+  };
+  const addElement = () => {
+    const id = crypto.randomUUID();
+    const i = config.elements.length;
+    const label = i === 0 ? "Escudo" : "Duo";
+    setAutoEls((s) => new Set(s).add(id));
+    update((c) => ({
+      ...c,
+      elements: [...c.elements, { id, label, ...elementDefaults(label, garmentKind, i), widthMm: { adulto: i === 0 ? 90 : 60, nino: i === 0 ? 70 : 50 }, aspect: 1, filePath: null }],
+    }));
+  };
 
   return (
     <div className="flex flex-col gap-4">
@@ -1148,20 +1184,8 @@ function DesignForm({
       <Card className="flex flex-col gap-3">
         <div className="flex items-center justify-between">
           <h2 className="text-sm font-medium text-zinc-900">Escudo y elementos</h2>
-          <Button
-            size="sm"
-            variant="ghost"
-            onClick={() =>
-              update((c) => ({
-                ...c,
-                elements: [
-                  ...c.elements,
-                  { id: crypto.randomUUID(), label: "Sponsor", pieceKind: "frente", side: "centro", fromSideUnits: 5, fromShoulderTopUnits: 6, widthMm: { adulto: 200, nino: 150 }, aspect: 0.3, filePath: null },
-                ],
-              }))
-            }
-          >
-            + Agregar
+          <Button size="sm" variant="ghost" onClick={addElement}>
+            + Agregar elemento
           </Button>
         </div>
         {config.elements.map((el, i) => (

@@ -5,6 +5,7 @@ import { PageHeader } from "../../components/ui/PageHeader";
 import { Card } from "../../components/ui/Card";
 import { EmptyState } from "../../components/ui/EmptyState";
 import { cn } from "@/lib/cn";
+import { RowStatus } from "./RowStatus";
 
 // Producción: cada pedido con el paso en el que está (diseño → mockup →
 // rollo → sublimación) y un botón que lleva a lo que sigue. Arriba, las
@@ -22,6 +23,9 @@ const TOOLS = [
 
 type Row = {
   id: string;
+  kind: "order" | "job";
+  /** Estado para el selector ("" = automático, solo trabajos libres). */
+  status: string;
   href: string;
   name: string;
   sub: string;
@@ -51,7 +55,7 @@ export default async function ProduccionPage({ searchParams }: { searchParams: P
     ids.length ? supabase.from("order_resources").select("order_id").eq("resource_type", "mockup").in("order_id", ids) : none,
     supabase.from("production_layouts").select("order_id, job_id, linear_meters, created_at").order("created_at", { ascending: false }),
     ids.length ? supabase.from("production_layout_items").select("order_id").in("order_id", ids) : none,
-    supabase.from("production_jobs").select("id, client_name, items, design, created_at").order("created_at", { ascending: false }).limit(20),
+    supabase.from("production_jobs").select("*").order("created_at", { ascending: false }).limit(40), // * = incluye status (migración 035) si existe
   ]);
   const hasDesign = new Set((designs ?? []).map((d) => d.order_id));
   const hasMockup = new Set((mockups ?? []).map((d) => d.order_id));
@@ -73,6 +77,8 @@ export default async function ProduccionPage({ searchParams }: { searchParams: P
     if (d && !m && !r) states[2].state = "now";
     rows.push({
       id: o.id,
+      kind: "order",
+      status: o.status,
       href: `/panel/produccion/${o.id}`,
       name: o.team_or_group_name || o.contact_name || o.order_number,
       sub: o.order_number,
@@ -82,29 +88,39 @@ export default async function ProduccionPage({ searchParams }: { searchParams: P
       action: inSublim ? "Ver rollo" : !d ? "Empezar diseño" : !r ? (m ? "Armar rollo" : "Mockup o rollo") : "Ver rollo",
     });
   }
-  if (tab === "producir") {
-    for (const j of jobs ?? []) {
-      if (jobRolls.has(j.id)) continue;
-      const items = (Array.isArray(j.items) ? j.items : []) as { qty?: number }[];
-      const d = !!j.design && Object.keys(j.design as object).length > 0;
-      rows.push({
-        id: j.id,
-        href: `/panel/produccion/trabajos/${j.id}`,
-        name: j.client_name,
-        sub: "Trabajo libre",
-        garments: items.reduce((s, i) => s + (Number(i.qty) || 0), 0),
-        delivery: null,
-        steps: [
-          { label: "Diseño", state: d ? "ok" : "now" },
-          { label: "Rollo", state: d ? "now" : "todo" },
-        ],
-        action: d ? "Armar rollo" : "Empezar diseño",
-      });
-    }
+  for (const j of jobs ?? []) {
+    // Estado puesto a mano, o automático (diseño → rollo; con rollo, sale de la lista).
+    const manual = ((j as { status?: string | null }).status ?? "") as string;
+    const d = !!j.design && Object.keys(j.design as object).length > 0;
+    const auto = jobRolls.has(j.id) ? "listo" : "producir";
+    const where = manual ? (manual === "diseno" || manual === "rollo" ? "producir" : manual === "sublimacion" ? "sublimacion" : "listo") : auto;
+    if (where !== tab) continue;
+    const items = (Array.isArray(j.items) ? j.items : []) as { qty?: number }[];
+    const designOk = manual ? manual !== "diseno" : d;
+    const rollOk = manual === "sublimacion";
+    const steps: Row["steps"] = [
+      { label: "Diseño", state: designOk ? "ok" : "now" },
+      { label: "Rollo", state: rollOk ? "ok" : designOk ? "now" : "todo" },
+    ];
+    if (manual === "sublimacion") steps.push({ label: "Sublimación", state: "now" });
+    rows.push({
+      id: j.id,
+      kind: "job",
+      status: manual,
+      href: `/panel/produccion/trabajos/${j.id}`,
+      name: j.client_name,
+      sub: "Trabajo libre",
+      garments: items.reduce((s, i) => s + (Number(i.qty) || 0), 0),
+      delivery: null,
+      steps,
+      action: manual === "sublimacion" ? "Ver rollo" : designOk ? "Armar rollo" : "Empezar diseño",
+    });
   }
   const today = new Date(new Date().toDateString());
-  const countProduce = (orders ?? []).filter((o) => TO_PRODUCE.includes(o.status)).length + (jobs ?? []).filter((j) => !jobRolls.has(j.id)).length;
-  const countSublim = (orders ?? []).filter((o) => SUBLIM.includes(o.status)).length;
+  const jobWhere = (j: { id: string; status?: string | null }) =>
+    j.status ? (j.status === "diseno" || j.status === "rollo" ? "producir" : j.status === "sublimacion" ? "sublimacion" : "listo") : jobRolls.has(j.id) ? "listo" : "producir";
+  const countProduce = (orders ?? []).filter((o) => TO_PRODUCE.includes(o.status)).length + (jobs ?? []).filter((j) => jobWhere(j) === "producir").length;
+  const countSublim = (orders ?? []).filter((o) => SUBLIM.includes(o.status)).length + (jobs ?? []).filter((j) => jobWhere(j) === "sublimacion").length;
 
   return (
     <div className="mx-auto flex max-w-6xl flex-col gap-6">
@@ -196,6 +212,7 @@ export default async function ProduccionPage({ searchParams }: { searchParams: P
                       ? `${new Date(`${r.delivery}T00:00:00`).toLocaleDateString("es-AR", { day: "2-digit", month: "2-digit" })} · ${late ? `hace ${-d!} d` : d === 0 ? "hoy" : `en ${d} d`}`
                       : "sin fecha"}
                   </div>
+                  <RowStatus kind={r.kind} id={r.id} value={r.status} name={r.name} />
                   <Link
                     href={r.href}
                     className={cn(

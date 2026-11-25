@@ -3,7 +3,7 @@
 import { useMemo, useRef, useState } from "react";
 import { Magnet, RotateCw, Undo2 } from "lucide-react";
 import { bbox } from "@/lib/produccion/geometry";
-import { movePiece, rotatePiece, settlePiece, validateLayout, type PieceIssue } from "@/lib/produccion/rollEdit";
+import { compactLayout, movePiece, rotatePiece, settlePiece, validateLayout, type PieceIssue } from "@/lib/produccion/rollEdit";
 import type { Poly, RollLayout } from "@/lib/produccion/types";
 import { Button } from "../../components/ui/Button";
 
@@ -50,9 +50,14 @@ export function RollEditor({
     return { x: p.x, y: p.y };
   };
 
+  // Cada cambio a mano: si quedó lugar, el rollo se achica solo.
+  const [saved, setSaved] = useState<number | null>(null);
   const commit = (next: RollLayout) => {
+    const compact = compactLayout(next);
+    const gain = layout.lengthMm - compact.lengthMm;
+    setSaved(gain > 5 ? gain : null);
     setHistory((h) => [...h.slice(-30), layout]);
-    onChange(next);
+    onChange(compact);
   };
 
   const onDown = (idx: number) => (e: React.PointerEvent) => {
@@ -90,6 +95,7 @@ export function RollEditor({
     <div className="flex flex-col gap-2">
       <div className="sticky top-0 z-20 -mx-1 flex flex-wrap items-center gap-2 rounded-lg border border-zinc-200 bg-white/95 px-2 py-2 text-sm shadow-sm backdrop-blur">
         <span className="text-xs text-zinc-500">{sel ? `${sel.print.piece.kind.replace("_", " ")} · talle ${sel.print.piece.sizeLabel}` : "Tocá una pieza y arrastrala, o usá los botones."}</span>
+        {saved !== null && <span className="rounded-md bg-green-50 px-2 py-0.5 text-xs font-semibold text-green-700">Rollo {(saved / 10).toFixed(0)} cm más corto</span>}
         <label className="flex items-center gap-1.5 text-xs text-zinc-600" title="Al soltar o girar, si la pieza queda a menos de la separación de otra, se corre sola lo mínimo">
           <input type="checkbox" checked={autoSeparate} onChange={(e) => setAutoSeparate(e.target.checked)} />
           <Magnet className="h-3.5 w-3.5" /> Separar sola a {layout.settings.gapMm} mm

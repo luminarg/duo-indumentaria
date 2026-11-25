@@ -25,6 +25,10 @@ const KINDS: { value: PieceKind; label: string }[] = [
   { value: "otra", label: "Otra / no usar" },
 ];
 
+// Al mostrar: el short con la pierna derecha a la izquierda y la izquierda a
+// la derecha (delanteros enfrentados, como se ve armado).
+const KIND_ORDER = ["frente", "espalda", "manga_izq", "manga_der", "pierna_der", "pierna_izq", "otra"];
+
 const pathD = (poly: Poly) => `M${poly.map((p) => `${p.x.toFixed(1)} ${p.y.toFixed(1)}`).join(" L")} Z`;
 
 export function MoldesManager({
@@ -279,7 +283,7 @@ function ModelDetail({ model, sizes }: { model: Model; sizes: Record<string, str
               <span className="text-xs text-zinc-500">{list.length} piezas</span>
             </div>
             <div className="flex flex-wrap gap-3">
-              {list.map((p) => (
+              {[...list].sort((a, b) => KIND_ORDER.indexOf(a.kind) - KIND_ORDER.indexOf(b.kind)).map((p) => (
                 <div key={p.key} className="flex flex-col items-center gap-1">
                   <svg viewBox={`-10 -10 ${p.widthMm + 20} ${p.heightMm + 20}`} height={90}>
                     <path d={pathD(p.outline)} fill="#f4f4f5" stroke="#111" strokeWidth={3} />

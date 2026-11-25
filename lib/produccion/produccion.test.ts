@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import { PDFDocument } from "pdf-lib";
 import { assemblyTransforms, DEFAULT_ASSEMBLY, shoulderTip, sizeScale } from "./assembly";
 import { approxMeasurer, buildPrintPieces, contrastOn } from "./build";
-import { defaultDesignConfig } from "./defaults";
+import { defaultDesignConfig, elementDefaults } from "./defaults";
 import { exportRollPdf, splitSegments } from "./exportPdf";
 import { apply, area, areaOutside, bbox, compose, minDistance, offset, rectPoly, spanAtY } from "./geometry";
 import { DEFAULT_SETTINGS, nest } from "./nesting";
@@ -32,8 +32,8 @@ describe("escudo con la grilla de 10 unidades", () => {
     const b = bbox(p.outline);
     const u = gridUnit(p);
     const { center } = placeElement(p, escudo);
-    expect(center.x).toBeCloseTo(b.maxX - 2.5 * u, 6);
-    expect(center.y).toBeCloseTo(b.minY + 3.5 * u, 6);
+    expect(center.x).toBeCloseTo(b.maxX - 3 * u, 6);
+    expect(center.y).toBeCloseTo(b.minY + 4.2 * u, 6);
     expect(center.x).toBeGreaterThan((b.minX + b.maxX) / 2);
   });
 
@@ -50,8 +50,8 @@ describe("escudo con la grilla de 10 unidades", () => {
       const b = bbox(p.outline);
       const u = gridUnit(p);
       const { center } = placeElement(p, escudo);
-      expect((b.maxX - center.x) / u).toBeCloseTo(2.5, 6);
-      expect((center.y - b.minY) / u).toBeCloseTo(3.5, 6);
+      expect((b.maxX - center.x) / u).toBeCloseTo(3, 6);
+      expect((center.y - b.minY) / u).toBeCloseTo(4.2, 6);
     }
   });
 
@@ -161,13 +161,52 @@ describe("nombre, número y etiqueta", () => {
     const b = bbox(front.piece.outline);
     const u = gridUnit(front.piece);
     expect((b.maxX - el.center.x) / u).toBeCloseTo(0.8, 6); // izquierda de quien usa = derecha del dibujo
-    expect((b.maxY - el.center.y) / u).toBeCloseTo(2.4, 6);
+    expect((b.maxY - el.center.y) / u).toBeCloseTo(2.2, 6);
     expect(front.texts.filter((t) => t.kind === "talle").length).toBe(2); // esquina + indicador
   });
 
   it("el color de la etiqueta contrasta con el fondo", () => {
     expect(contrastOn("#003c67")).toBe("#FFFFFF");
     expect(contrastOn("#FFFFFF")).toBe("#141414");
+  });
+});
+
+describe("retoque: el rollo se achica solo", () => {
+  it("si sobra lugar al final, el largo baja hasta la última pieza y las tiras suben", () => {
+    const design = defaultDesignConfig();
+    const garments: GarmentRequest[] = Array.from({ length: 2 }, (_, i) => ({ orderItemId: `c${i}`, sizeLabel: "M", variant: "jugador" }));
+    const { prints } = buildPrintPieces({ pieces: sampleMolds(), assembly: DEFAULT_ASSEMBLY, design, garments, measure: approxMeasurer });
+    const roll = addCollarPanel(nest(prints, DEFAULT_SETTINGS), design.collars, 6, "#112233");
+    // Simula un rollo con 300 mm de más (como si se hubiera subido la última pieza).
+    const loose = {
+      ...roll,
+      segments: roll.segments.map((g) => ({ ...g, endMm: g.endMm + 300, collars: g.collars ? { ...g.collars, startMm: g.collars.startMm + 300, endMm: g.collars.endMm + 300 } : undefined })),
+      lengthMm: roll.lengthMm + 300,
+    };
+    const c = compactLayout(loose);
+    const lowest = Math.max(...c.placed.flatMap((p) => p.outer.map((q) => q.y)));
+    const panel = c.segments.find((g) => g.collars)!.collars!;
+    expect(panel.startMm).toBeCloseTo(lowest + DEFAULT_SETTINGS.gapMm, 6);
+    expect(c.lengthMm).toBeLessThan(loose.lengthMm);
+    expect(validateLayout(c)).toEqual([]);
+  });
+});
+
+describe("valores por defecto del taller", () => {
+  it("elementos según la etiqueta, en remera y short", () => {
+    expect(elementDefaults("Escudo", "remera")).toMatchObject({ pieceKind: "frente", side: "izquierda", fromSideUnits: 3, fromShoulderTopUnits: 4.2 });
+    expect(elementDefaults("Marca", "remera")).toMatchObject({ side: "izquierda", fromSideUnits: 3 });
+    expect(elementDefaults("duo", "remera")).toMatchObject({ pieceKind: "frente", side: "derecha", fromSideUnits: 2.1, fromShoulderTopUnits: 1.8 });
+    expect(elementDefaults("Escudo", "short")).toMatchObject({ pieceKind: "pierna_der", side: "derecha", fromSideUnits: 3.5, fromBaseUnits: 2.5 });
+    expect(elementDefaults("Duo", "short")).toMatchObject({ pieceKind: "pierna_izq", side: "izquierda", fromSideUnits: 3.5, fromBaseUnits: 2.5 });
+    expect(elementDefaults("Sponsor", "short", 1)).toMatchObject({ pieceKind: "pierna_izq" }); // segundo elemento: la otra pierna
+  });
+
+  it("indicador de talle de remera y de short", () => {
+    const r = defaultDesignConfig("remera").sizeIndicator;
+    expect(r).toMatchObject({ side: "izquierda", fromSideUnits: 0.8, fromBaseUnits: 2.2, widthMm: 22, textX: 0.7, textY: 0.2, textRotation: 90, textAlign: "centro", textHeightMm: 6 });
+    const sh = defaultDesignConfig("short").sizeIndicator;
+    expect(sh).toMatchObject({ shortKind: "pierna_izq", shortAlongWaistUnits: 1, shortBelowWaistUnits: 0.4, widthMm: 76, textX: 0.3, textY: 0.74, textRotation: 180, textAlign: "centro", textHeightMm: 6 });
   });
 });
 
@@ -424,6 +463,11 @@ describe("panel de cuellos", () => {
     expect(panel.separatorColor).toBe(contrastOn("#112233"));
 
     // 200 tiras de 40 mm = 8 m: se reparte en tramos de hasta 5 m, cortando entre tiras.
+    // Rollo combinado: el panel del segundo pedido va a continuación del primero.
+    const two = addCollarPanel(withCollars, design.collars, 6, "#445566");
+    const panels = two.segments.filter((g) => g.collars).map((g) => g.collars!);
+    expect(panels.length).toBe(2);
+    expect(panels[1].startMm).toBeCloseTo(panels[0].endMm, 6);
     const big = addCollarPanel(roll, { ...design.collars, necksPerStrip: 1 }, 200, "#112233");
     const cs = big.segments.filter((s) => s.collars);
     expect(cs.reduce((a, s) => a + s.collars!.strips, 0)).toBe(200);
@@ -624,7 +668,7 @@ describe("PDF con paños uno al lado del otro", () => {
   });
 });
 
-import { movePiece, rotatePiece, validateLayout } from "./rollEdit";
+import { compactLayout, movePiece, rotatePiece, validateLayout } from "./rollEdit";
 
 describe("retoque manual del rollo", () => {
   const garments: GarmentRequest[] = Array.from({ length: 4 }, (_, i) => ({ orderItemId: `g${i}`, sizeLabel: i % 2 ? "M" : "L", variant: "jugador" }));

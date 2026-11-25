@@ -1,4 +1,5 @@
 import { bbox, intersectionArea, offset, polygonsOverlap, simplify } from "./geometry";
+import { appendCollarStrips } from "./collars";
 import { placementTransform } from "./nesting";
 import type { Affine, Poly, RollLayout } from "./types";
 
@@ -93,6 +94,39 @@ export function reassignSegments(layout: RollLayout): RollLayout {
     seg.pieceIndexes.push(i);
   });
   return { ...layout, segments };
+}
+
+/**
+ * Después de mover o girar a mano: si quedó lugar libre, el rollo se achica
+ * solo. Cada paño termina justo debajo de su pieza más baja (+ la mitad de la
+ * separación, como arma el motor), los paños de abajo suben lo que se ganó y
+ * las tiras de cuello vuelven a quedar a 6 mm de la última pieza.
+ */
+export function compactLayout(layout: RollLayout): RollLayout {
+  const s = layout.settings;
+  const panels = layout.segments.filter((g) => g.collars).map((g) => g.collars!);
+  const segs = layout.segments.filter((g) => g.pieceIndexes.length);
+  if (!segs.length) return layout;
+  let placed = [...layout.placed];
+  const out: RollLayout["segments"] = [];
+  let prevEnd = 0;
+  for (const g of segs) {
+    const delta = prevEnd - g.startMm;
+    let bottom = -Infinity;
+    for (const i of g.pieceIndexes) {
+      const p = placed[i];
+      const moved = delta ? { ...p, dy: p.dy + delta, outer: p.outer.map((q) => ({ x: q.x, y: q.y + delta })) } : p;
+      placed[i] = moved;
+      for (const q of moved.outer) if (q.y > bottom) bottom = q.y;
+    }
+    const end = Math.max(prevEnd, bottom + s.gapMm / 2);
+    out.push({ startMm: prevEnd, endMm: end, pieceIndexes: [...g.pieceIndexes] });
+    prevEnd = end;
+  }
+  placed = placed.slice();
+  let next: RollLayout = { ...layout, placed, segments: out, lengthMm: prevEnd };
+  for (const c of panels) next = appendCollarStrips(next, c.strips, c.rule, c.color, c.separatorColor);
+  return next;
 }
 
 export type PieceIssue = { idx: number; message: string };
