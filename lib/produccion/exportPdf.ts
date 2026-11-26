@@ -24,6 +24,13 @@ import {
   setLineWidth,
   setLineJoin,
   LineJoinStyle,
+  setTextRenderingMode,
+  TextRenderingMode,
+  setCharacterSpacing,
+  setFontAndSize,
+  showText,
+  beginText,
+  endText,
   stroke,
   drawObject,
 } from "pdf-lib";
@@ -281,13 +288,39 @@ async function createPainter(doc: PDFDocument, background: BackgroundRule, asset
       if (opts.skipTextKinds?.includes(t.kind)) continue;
       const font = fonts[t.style.font] ?? helvetica;
       const size = t.heightMm / capHeightRatio(font);
-      const w = font.widthOfTextAtSize(t.text, size);
+      const spacing = t.style.letterSpacingMm ?? 0;
+      const w = font.widthOfTextAtSize(t.text, size) + spacing * Math.max(0, [...t.text].length - 1);
       // Texto (x a la derecha, y arriba, origen al inicio de la línea de base)
       // → pieza: girado `rotation` (horario) alrededor de su punto de anclaje.
       const local = textToPiece(t, w);
-      page.pushOperators(pushGraphicsState(), cm(compose(local, pieceToPage)));
-      page.drawText(t.text, { x: 0, y: 0, size, font, color: t.style.fill ? hexToRgb(t.style.fill) : BLACK });
-      page.pushOperators(popGraphicsState());
+      const key = page.node.newFontDictionary(font.name, font.ref);
+      const encoded = font.encodeText(t.text);
+      page.pushOperators(pushGraphicsState(), cm(compose(local, pieceToPage)), setCharacterSpacing(spacing));
+      // Contorno: un trazo del doble del grosor, debajo del relleno (así
+      // sobresale hacia afuera lo pedido y no se come la letra).
+      if (t.style.stroke && (t.style.strokeMm ?? 0) > 0) {
+        const c = hexToRgb(t.style.stroke);
+        page.pushOperators(
+          setStrokingRgbColor(c.red, c.green, c.blue),
+          setLineWidth(2 * (t.style.strokeMm ?? 0)),
+          setLineJoin(LineJoinStyle.Round),
+          beginText(),
+          setFontAndSize(key, size),
+          setTextRenderingMode(TextRenderingMode.Outline),
+          showText(encoded),
+          endText()
+        );
+      }
+      const f = t.style.fill ? hexToRgb(t.style.fill) : BLACK;
+      page.pushOperators(
+        setFillingRgbColor(f.red, f.green, f.blue),
+        beginText(),
+        setFontAndSize(key, size),
+        setTextRenderingMode(TextRenderingMode.Fill),
+        showText(encoded),
+        endText(),
+        popGraphicsState()
+      );
     }
 
   }

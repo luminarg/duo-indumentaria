@@ -32,6 +32,9 @@ export function defaultDesignConfig(kind: GarmentKind = "remera"): DesignConfig 
   if (kind === "short") {
     c.elements = [{ ...c.elements[0], ...elementDefaults("Escudo", "short") }];
     c.collars = { ...c.collars, enabled: false }; // el short no lleva cuello
+    // Número del short: en la pierna izquierda, en el mismo lugar que el
+    // escudo (que va en la derecha) pero del otro lado, arriba de la marca.
+    c.number = { ...c.number, pieceKinds: ["pierna_izq"], shortSide: "delantero", shortFromSideUnits: 3.5, shortFromBaseUnits: 4.6 };
     // Indicador de talle del short: pierna izquierda, esquina alta de la cintura.
     c.sizeIndicator = {
       ...c.sizeIndicator,

@@ -101,8 +101,12 @@ export type TextStyle = {
   /** "Helvetica-Bold" o la ruta en Storage de una fuente subida (fuentes/…ttf|otf). */
   font: string;
   fill: string; // hex
-  stroke?: string | null; // borde, hex
+  /** Contorno (silueta) alrededor de las letras, hacia afuera: color hex. Vacío = sin contorno. */
+  stroke?: string | null;
+  /** Grosor del contorno, en mm (lo que sobresale de la letra). */
   strokeMm?: number;
+  /** Separación extra entre letras, en mm (negativo = más juntas). */
+  letterSpacingMm?: number;
 };
 
 export type NumberRule = {

@@ -41,7 +41,9 @@ function fitText(
   maxWidth: number,
   measure: TextMeasurer
 ): { heightMm: number; widthMm: number; shrunk: boolean } {
-  const w = measure(text, style.font, heightMm);
+  // Separación entre letras y contorno también ocupan ancho.
+  const extra = (style.letterSpacingMm ?? 0) * Math.max(0, [...text].length - 1) + (style.stroke ? 2 * (style.strokeMm ?? 0) : 0);
+  const w = measure(text, style.font, heightMm) + extra;
   if (w <= maxWidth || w === 0) return { heightMm, widthMm: w, shrunk: false };
   const k = maxWidth / w;
   return { heightMm: heightMm * k, widthMm: maxWidth, shrunk: true };

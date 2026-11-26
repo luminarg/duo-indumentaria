@@ -130,6 +130,11 @@ export function PiecePreview({
             fontFamily={fontInfo[t.style.font] ? `"${fontInfo[t.style.font].family}"` : "Helvetica, Arial, sans-serif"}
             fontWeight={fontInfo[t.style.font] ? undefined : 700}
             fill={t.style.fill || "#111"}
+            letterSpacing={t.style.letterSpacingMm || undefined}
+            stroke={t.style.stroke && t.style.strokeMm ? t.style.stroke : undefined}
+            strokeWidth={t.style.stroke && t.style.strokeMm ? 2 * t.style.strokeMm : undefined}
+            strokeLinejoin="round"
+            paintOrder="stroke"
           >
             {t.text}
           </text>

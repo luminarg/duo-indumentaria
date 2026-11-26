@@ -33,7 +33,7 @@ import { FreePieces } from "../FreePieces";
 import { FabricWidthInput } from "../FabricWidthInput";
 import { sampleMolds } from "@/lib/produccion/sampleMolds";
 import { DEFAULT_ASSEMBLY } from "@/lib/produccion/assembly";
-import type { AnchoredElement, DesignConfig, PieceKind, PrintPiece, RollLayout, TextAlign, TextRotation, WearerSide } from "@/lib/produccion/types";
+import type { AnchoredElement, DesignConfig, PieceKind, PrintPiece, RollLayout, TextAlign, TextStyle, TextRotation, WearerSide } from "@/lib/produccion/types";
 import Link from "next/link";
 import { elementDefaults, type GarmentKind } from "@/lib/produccion/defaults";
 import { cn } from "@/lib/cn";
@@ -979,6 +979,29 @@ export function ProductionWorkbench(props: {
   );
 }
 
+/**
+ * Color, contorno (silueta) y separación entre letras de un texto (número o
+ * nombre). El contorno va hacia afuera de la letra.
+ */
+function TextStyleControls({ style, onChange }: { style: TextStyle; onChange: (s: Partial<TextStyle>) => void }) {
+  const hasStroke = !!style.stroke && (style.strokeMm ?? 0) > 0;
+  return (
+    <div className="col-span-2 grid grid-cols-2 gap-2 rounded-lg bg-zinc-50 p-2">
+      <label className="flex items-center gap-2 text-xs text-zinc-600">
+        Color
+        <input type="color" value={style.fill || "#FFFFFF"} onChange={(e) => onChange({ fill: e.target.value.toUpperCase() })} className="h-7 w-10 rounded border border-zinc-300" />
+      </label>
+      <label className="flex items-center gap-2 text-xs text-zinc-600">
+        <input type="checkbox" checked={hasStroke} onChange={(e) => onChange(e.target.checked ? { stroke: style.stroke || "#000000", strokeMm: style.strokeMm || 1.5 } : { stroke: null, strokeMm: 0 })} />
+        Contorno
+        {hasStroke && <input type="color" value={style.stroke!} onChange={(e) => onChange({ stroke: e.target.value.toUpperCase() })} className="h-7 w-10 rounded border border-zinc-300" />}
+      </label>
+      {hasStroke && <Num label="Grosor del contorno (mm)" step={0.1} value={style.strokeMm ?? 1.5} onChange={(n) => onChange({ strokeMm: Math.max(0, n) })} />}
+      <Num label="Separación entre letras (mm)" step={0.5} value={style.letterSpacingMm ?? 0} onChange={(n) => onChange({ letterSpacingMm: n })} hint="Negativo = más juntas" />
+    </div>
+  );
+}
+
 type Trim = { mode: "diseno" | "color"; color: string };
 
 /** Cuello o puños del mockup: como viene del diseño, u otro color (con los colores del diseño a mano). */
@@ -1248,6 +1271,7 @@ function DesignForm({
             <Num label="Alto niño (mm)" value={config.number.heightMm.nino} onChange={(n) => update((c) => ({ ...c, number: { ...c.number, heightMm: { ...c.number.heightMm, nino: n } } }))} />
             <Num label="Centro, unidades desde el hombro" step={0.1} value={config.number.fromShoulderTopUnits} onChange={(n) => update((c) => ({ ...c, number: { ...c.number, fromShoulderTopUnits: n } }))} />
             {fontSelect("Fuente del número", config.number.style.font, (font) => update((c) => ({ ...c, number: { ...c.number, style: { ...c.number.style, font } } })))}
+            <TextStyleControls style={config.number.style} onChange={(st) => update((c) => ({ ...c, number: { ...c.number, style: { ...c.number.style, ...st } } }))} />
             <label className="flex items-end gap-2 pb-2 text-xs text-zinc-600">
               <input
                 type="checkbox"
@@ -1310,6 +1334,7 @@ function DesignForm({
             <Num label="Alto (mm)" value={config.name.heightMm} onChange={(n) => update((c) => ({ ...c, name: { ...c.name, heightMm: n } }))} hint="Si no entra, se achica en proporción" />
             <Num label="Centro, unidades desde el hombro" step={0.1} value={config.name.fromShoulderTopUnits} onChange={(n) => update((c) => ({ ...c, name: { ...c.name, fromShoulderTopUnits: n } }))} />
             {fontSelect("Fuente del nombre", config.name.style.font, (font) => update((c) => ({ ...c, name: { ...c.name, style: { ...c.name.style, font } } })))}
+            <TextStyleControls style={config.name.style} onChange={(st) => update((c) => ({ ...c, name: { ...c.name, style: { ...c.name.style, ...st } } }))} />
           </div>
         )}
         <label className="flex items-center gap-2 text-sm font-medium text-zinc-900">

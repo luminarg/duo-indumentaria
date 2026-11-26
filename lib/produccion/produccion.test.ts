@@ -202,6 +202,13 @@ describe("valores por defecto del taller", () => {
     expect(elementDefaults("Sponsor", "short", 1)).toMatchObject({ pieceKind: "pierna_izq" }); // segundo elemento: la otra pierna
   });
 
+  it("número del short: pierna izquierda, del otro lado del escudo y arriba de la marca", () => {
+    const n = defaultDesignConfig("short").number;
+    expect(n.pieceKinds).toEqual(["pierna_izq"]);
+    expect(n).toMatchObject({ shortSide: "delantero", shortFromSideUnits: 3.5 });
+    expect(n.shortFromBaseUnits!).toBeGreaterThan(elementDefaults("Duo", "short").fromBaseUnits!);
+  });
+
   it("indicador de talle de remera y de short", () => {
     const r = defaultDesignConfig("remera").sizeIndicator;
     expect(r).toMatchObject({ side: "izquierda", fromSideUnits: 0.8, fromBaseUnits: 2.2, widthMm: 22, textX: 0.7, textY: 0.2, textRotation: 90, textAlign: "centro", textHeightMm: 6 });
